@@ -6,6 +6,8 @@ import '../utils/routes.dart';
 import '../providers/inventory_provider.dart';
 import '../providers/product_provider.dart';
 import '../models/product_model.dart';
+import '../widgets/sweet_alert.dart';
+
 
 class NuevaEntradaScreen extends StatefulWidget {
   const NuevaEntradaScreen({super.key});
@@ -408,14 +410,20 @@ class _NuevaEntradaScreenState extends State<NuevaEntradaScreen> {
                 ? null
                 : () async {
                     if (_selectedWarehouseId == null || _selectedProviderId == null) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Por favor selecciona Almacén y Proveedor')),
+                      SweetAlert.show(
+                        context,
+                        title: 'Campos Incompletos',
+                        message: 'Por favor selecciona un Almacén y un Proveedor.',
+                        type: SweetAlertType.warning,
                       );
                       return;
                     }
                     if (_productos.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Agrega al menos un producto a la entrada')),
+                      SweetAlert.show(
+                        context,
+                        title: 'Sin Productos',
+                        message: 'Agrega al menos un producto a la entrada de inventario.',
+                        type: SweetAlertType.warning,
                       );
                       return;
                     }
@@ -430,13 +438,21 @@ class _NuevaEntradaScreenState extends State<NuevaEntradaScreen> {
 
                     if (context.mounted) {
                       if (success) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Entrada registrada exitosamente en SQL Server')),
+                        SweetAlert.show(
+                          context,
+                          title: '¡Registro Exitoso!',
+                          message: 'Entrada registrada exitosamente en SQL Server.',
+                          type: SweetAlertType.success,
+                          onConfirm: () {
+                            Navigator.pop(context);
+                          },
                         );
-                        Navigator.pop(context);
                       } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(inventoryProvider.errorMessage ?? 'Error al guardar la entrada')),
+                        SweetAlert.show(
+                          context,
+                          title: 'Error de Registro',
+                          message: inventoryProvider.errorMessage ?? 'Error al guardar la entrada.',
+                          type: SweetAlertType.error,
                         );
                       }
                     }

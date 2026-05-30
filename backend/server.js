@@ -75,6 +75,30 @@ app.post('/api/backup', async (req, res) => {
     }
 });
 
+// Endpoint para listar todos los respaldos creados
+app.get('/api/backups', async (req, res) => {
+    try {
+        if (!fs.existsSync(backupDir)) {
+            return res.json([]);
+        }
+        const files = fs.readdirSync(backupDir);
+        const backups = files.map(file => {
+            const filePath = path.join(backupDir, file);
+            const stats = fs.statSync(filePath);
+            return {
+                name: file,
+                date: stats.mtime,
+                size: stats.size
+            };
+        });
+        // Ordenar por fecha más reciente
+        backups.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        res.json(backups);
+    } catch (err) {
+        res.status(500).json({ message: 'Error al listar respaldos.', error: err.message });
+    }
+});
+
 // ==========================================
 // ENDPOINTS DE AUTENTICACIÓN
 // ==========================================
