@@ -16,11 +16,22 @@ Asegúrate de contar con las siguientes herramientas instaladas antes de iniciar
 
 ## 💾 Paso 1: Configuración de la Base de Datos (SQL Server)
 
+Tienes dos alternativas profesionales para inicializar la base de datos de la solución:
+
+### 🅰️ Opción A: Ejecutar el Script SQL Maestro (Recomendado para instalaciones limpias)
 1. Abre tu herramienta gestora de base de datos (**SQL Server Management Studio** o **Azure Data Studio**).
 2. Conéctate a tu servidor SQL local.
 3. Abre y ejecuta por completo el script maestro de base de datos ubicado en:
-   👉 [backend/db_script.sql](file:///d:/Repositorio%20Flutter/StudioProjects/inventario_app/backend/db_script.sql)
+   👉 [db/db_script.sql](file:///d:/Repositorio%20Flutter/StudioProjects/inventario_app/db/db_script.sql)
 4. El script creará la base de datos `inventario_multiplataforma`, todas las tablas operativas con relaciones íntegras, restricciones CHECK para transacciones y transferencias, auditorías, y un catálogo inicial de datos semilla listos para operar.
+
+### 🅱️ Opción B: Restaurar la Base de Datos desde el Backup (.bak)
+Si prefieres iniciar con la base de datos idéntica en datos históricos y configuración a la usada en producción:
+1. Localiza el archivo de copia de seguridad en el repositorio:
+   👉 `db/inventario_multiplataforma.bak`
+2. En **SQL Server Management Studio**, haz clic derecho sobre "Databases" y selecciona **Restore Database...**.
+3. Selecciona la opción **Device**, busca el archivo `inventario_multiplataforma.bak` y procede con la restauración.
+4. Asegúrate de configurar los permisos del usuario de base de datos correspondiente de acuerdo a tu servidor.
 
 ---
 
