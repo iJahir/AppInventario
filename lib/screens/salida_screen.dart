@@ -16,6 +16,7 @@ class _SalidaScreenState extends State<SalidaScreen> {
   final int _selectedIndex = 3;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+  String _sortOption = 'Recientes';
 
   @override
   void dispose() {
@@ -302,14 +303,28 @@ class _SalidaScreenState extends State<SalidaScreen> {
           ),
         ),
         const SizedBox(width: 12),
-        Container(
-          height: 50, width: 50,
-          decoration: BoxDecoration(
-            color: AppColors.getCardColor(context), 
-            borderRadius: BorderRadius.circular(15), 
-            border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        PopupMenuButton<String>(
+          onSelected: (val) {
+            setState(() {
+              _sortOption = val;
+            });
+          },
+          color: AppColors.getCardColor(context),
+          itemBuilder: (context) => [
+            const PopupMenuItem(value: 'Recientes', child: Text('Recientes', style: TextStyle(color: Colors.white))),
+            const PopupMenuItem(value: 'Antiguas', child: Text('Más Antiguas', style: TextStyle(color: Colors.white))),
+            const PopupMenuItem(value: 'Mayor Monto', child: Text('Mayor Monto', style: TextStyle(color: Colors.white))),
+            const PopupMenuItem(value: 'Menor Monto', child: Text('Menor Monto', style: TextStyle(color: Colors.white))),
+          ],
+          child: Container(
+            height: 50, width: 50,
+            decoration: BoxDecoration(
+              color: AppColors.getCardColor(context), 
+              borderRadius: BorderRadius.circular(15), 
+              border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+            ),
+            child: Icon(Icons.tune_rounded, color: AppColors.getSubtextColor(context), size: 20),
           ),
-          child: Icon(Icons.tune_rounded, color: AppColors.getSubtextColor(context), size: 20),
         ),
       ],
     );
@@ -332,7 +347,7 @@ class _SalidaScreenState extends State<SalidaScreen> {
       return const Center(child: CircularProgressIndicator(color: AppColors.moradoPrincipal));
     }
 
-    var filteredExits = inventoryProvider.exits;
+    var filteredExits = List<Map<String, dynamic>>.from(inventoryProvider.exits);
     if (_searchQuery.isNotEmpty) {
       filteredExits = filteredExits.where((tx) {
         final pNames = (tx['items'] as List?)?.map((i) => i['productName']).join(', ').toLowerCase() ?? '';
@@ -340,6 +355,19 @@ class _SalidaScreenState extends State<SalidaScreen> {
         return pNames.contains(_searchQuery) || client.contains(_searchQuery);
       }).toList();
     }
+
+    // Sort exits based on _sortOption
+    filteredExits.sort((a, b) {
+      if (_sortOption == 'Mayor Monto' || _sortOption == 'Menor Monto') {
+        final amtA = (a['totalAmount'] as num?)?.toDouble() ?? 0.0;
+        final amtB = (b['totalAmount'] as num?)?.toDouble() ?? 0.0;
+        return _sortOption == 'Mayor Monto' ? amtB.compareTo(amtA) : amtA.compareTo(amtB);
+      } else {
+        final dateA = DateTime.tryParse(a['transactionDate']?.toString() ?? '') ?? DateTime.now();
+        final dateB = DateTime.tryParse(b['transactionDate']?.toString() ?? '') ?? DateTime.now();
+        return _sortOption == 'Antiguas' ? dateA.compareTo(dateB) : dateB.compareTo(dateA);
+      }
+    });
 
     if (filteredExits.isEmpty) {
       return const Padding(

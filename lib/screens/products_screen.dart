@@ -17,6 +17,15 @@ class ProductsScreen extends StatefulWidget {
 class _ProductsScreenState extends State<ProductsScreen> {
   final int _selectedIndex = 1;
   String _selectedCategory = 'Todos';
+  bool _isSearching = false;
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -139,15 +148,45 @@ class _ProductsScreenState extends State<ProductsScreen> {
           _buildCircleIconButton(context, Icons.arrow_back_rounded, onTap: () => Navigator.pushReplacementNamed(context, AppRoutes.dashboard)),
           const SizedBox(width: 15),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Productos', style: TextStyle(color: AppColors.getTextColor(context), fontSize: 24, fontWeight: FontWeight.bold)),
-                Text('Gestiona tu catálogo', style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 13)),
-              ],
-            ),
+            child: _isSearching
+                ? TextField(
+                    controller: _searchController,
+                    autofocus: true,
+                    style: TextStyle(color: AppColors.getTextColor(context)),
+                    decoration: InputDecoration(
+                      hintText: 'Buscar por nombre o SKU...',
+                      hintStyle: TextStyle(color: AppColors.getSubtextColor(context)),
+                      border: InputBorder.none,
+                    ),
+                    onChanged: (val) {
+                      setState(() {
+                        _searchQuery = val.toLowerCase();
+                      });
+                    },
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Productos', style: TextStyle(color: AppColors.getTextColor(context), fontSize: 24, fontWeight: FontWeight.bold)),
+                      Text('Gestiona tu catálogo', style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 13)),
+                    ],
+                  ),
           ),
-          _buildCircleIconButton(context, Icons.search_rounded),
+          _buildCircleIconButton(
+            context, 
+            _isSearching ? Icons.close_rounded : Icons.search_rounded, 
+            onTap: () {
+              setState(() {
+                if (_isSearching) {
+                  _isSearching = false;
+                  _searchQuery = '';
+                  _searchController.clear();
+                } else {
+                  _isSearching = true;
+                }
+              });
+            }
+          ),
         ],
       ),
     );
@@ -293,15 +332,23 @@ class _ProductsScreenState extends State<ProductsScreen> {
       );
     }
 
-    final filteredProducts = _selectedCategory == 'Todos'
+    var filteredProducts = _selectedCategory == 'Todos'
         ? productProvider.products
         : productProvider.products.where((p) => p.category?.toLowerCase() == _selectedCategory.toLowerCase()).toList();
+
+    if (_searchQuery.isNotEmpty) {
+      filteredProducts = filteredProducts.where((p) {
+        final nameMatches = p.name.toLowerCase().contains(_searchQuery);
+        final skuMatches = (p.sku?.toLowerCase() ?? '').contains(_searchQuery);
+        return nameMatches || skuMatches;
+      }).toList();
+    }
 
     if (filteredProducts.isEmpty) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 40),
         child: Text(
-          'No hay productos registrados en esta categoría.',
+          'No hay productos registrados en esta categoría o búsqueda.',
           style: TextStyle(color: Colors.white54, fontSize: 14),
           textAlign: TextAlign.center,
         ),

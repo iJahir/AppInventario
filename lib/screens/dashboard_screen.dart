@@ -94,8 +94,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _buildActivityList(context),
           const SizedBox(height: 25),
           _buildWarehouseMovementsSection(context),
-          const SizedBox(height: 25),
-          _buildPromotionCard(context),
           const SizedBox(height: 120),
         ],
       ),
