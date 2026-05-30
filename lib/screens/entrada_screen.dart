@@ -1,0 +1,455 @@
+import 'package:flutter/material.dart';
+import 'dart:ui';
+import 'package:provider/provider.dart';
+import '../providers/inventory_provider.dart';
+import '../utils/routes.dart';
+import '../utils/app_colors.dart';
+
+class EntradaScreen extends StatefulWidget {
+  const EntradaScreen({super.key});
+
+  @override
+  State<EntradaScreen> createState() => _EntradaScreenState();
+}
+
+class _EntradaScreenState extends State<EntradaScreen> {
+  final int _selectedIndex = 2;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<InventoryProvider>(context, listen: false).fetchTransactions();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Scaffold(
+      backgroundColor: AppColors.getBackgroundColor(context),
+      body: Stack(
+        children: [
+          Positioned(
+            top: -100,
+            right: -50,
+            child: _buildBlurOrb(AppColors.moradoPrincipal.withValues(alpha: isDark ? 0.15 : 0.05), 300),
+          ),
+          Positioned(
+            bottom: 100,
+            left: -50,
+            child: _buildBlurOrb(AppColors.azulPrincipal.withValues(alpha: isDark ? 0.1 : 0.05), 250),
+          ),
+          
+          SafeArea(
+            child: Column(
+              children: [
+                _buildHeader(context),
+                Expanded(
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Column(
+                      children: [
+                        _buildMiniDashboard(context),
+                        const SizedBox(height: 25),
+                        _buildActionButton(context),
+                        const SizedBox(height: 20),
+                        _buildSearchBar(context),
+                        const SizedBox(height: 25),
+                        _buildSectionTitle('Entradas recientes', context),
+                        const SizedBox(height: 15),
+                        _buildEntradasList(context),
+                        const SizedBox(height: 20),
+                        _buildFooterSummary(context),
+                        const SizedBox(height: 120),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: _buildSnakeNavBar(context),
+    );
+  }
+
+  Widget _buildBlurOrb(Color color, double size) {
+    return Container(
+      width: size, height: size,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 80, sigmaY: 80), child: Container(color: Colors.transparent)),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Row(
+        children: [
+          _buildCircleIconButton(context, Icons.arrow_back_rounded, onTap: () => Navigator.pushReplacementNamed(context, AppRoutes.dashboard)),
+          const SizedBox(width: 15),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Entradas', style: TextStyle(color: AppColors.getTextColor(context), fontSize: 24, fontWeight: FontWeight.bold)),
+                Text('Registra y gestiona los ingresos', style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 13)),
+              ],
+            ),
+          ),
+          _buildCircleIconButton(context, Icons.bar_chart_rounded, iconColor: AppColors.moradoPrincipal),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCircleIconButton(BuildContext context, IconData icon, {VoidCallback? onTap, Color? iconColor}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.getCardColor(context), 
+          shape: BoxShape.circle, 
+          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+        ),
+        child: Icon(icon, color: iconColor ?? AppColors.getTextColor(context), size: 22),
+      ),
+    );
+  }
+
+  Widget _buildMiniDashboard(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.getCardColor(context),
+        borderRadius: BorderRadius.circular(25),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 15)],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Resumen Semanal', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+              Icon(Icons.trending_up_rounded, color: Colors.greenAccent, size: 20),
+            ],
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            height: 80,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                _buildBar(0.4, 'L'),
+                _buildBar(0.6, 'M'),
+                _buildBar(0.3, 'M'),
+                _buildBar(0.8, 'J'),
+                _buildBar(0.5, 'V'),
+                _buildBar(0.2, 'S'),
+                _buildBar(0.4, 'D'),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          const Divider(color: Colors.white10),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _miniStat('Total', '${Provider.of<InventoryProvider>(context).entries.length}', Colors.blueAccent),
+              _miniStat('Valor', '\$${Provider.of<InventoryProvider>(context).entries.fold(0.0, (sum, e) => sum + ((e['totalAmount'] as num?)?.toDouble() ?? 0.0)).toStringAsFixed(0)}', AppColors.moradoPrincipal),
+              _miniStat('Prov.', '${Provider.of<InventoryProvider>(context).suppliers.length}', Colors.orangeAccent),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBar(double heightFactor, String label) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        Container(
+          width: 8,
+          height: 60 * heightFactor,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [AppColors.moradoPrincipal, AppColors.azulPrincipal.withValues(alpha: 0.5)],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(label, style: const TextStyle(color: AppColors.grisTexto, fontSize: 10)),
+      ],
+    );
+  }
+
+  Widget _miniStat(String label, String value, Color color) {
+    return Column(
+      children: [
+        Text(value, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+        Text(label, style: TextStyle(color: AppColors.grisTexto, fontSize: 10)),
+      ],
+    );
+  }
+
+  Widget _buildActionButton(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Navigator.pushNamed(context, AppRoutes.addEntry),
+      child: Container(
+        width: double.infinity, height: 55,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(colors: [AppColors.moradoPrincipal, Color(0xFF6A11CB)]),
+          borderRadius: BorderRadius.circular(15),
+          boxShadow: [BoxShadow(color: AppColors.moradoPrincipal.withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 4))],
+        ),
+        child: const Center(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.add, color: Colors.white),
+              SizedBox(width: 8),
+              Text('Nueva entrada', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchBar(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Container(
+            height: 50, padding: const EdgeInsets.symmetric(horizontal: 15),
+            decoration: BoxDecoration(
+              color: AppColors.getCardColor(context), 
+              borderRadius: BorderRadius.circular(15), 
+              border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.search, color: AppColors.getSubtextColor(context), size: 20),
+                const SizedBox(width: 10),
+                Text('Buscar entradas...', style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 14)),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Container(
+          height: 50, width: 50,
+          decoration: BoxDecoration(
+            color: AppColors.getCardColor(context), 
+            borderRadius: BorderRadius.circular(15), 
+            border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+          ),
+          child: Icon(Icons.tune_rounded, color: AppColors.getSubtextColor(context), size: 20),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSectionTitle(String title, BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(title, style: TextStyle(color: AppColors.getTextColor(context), fontSize: 18, fontWeight: FontWeight.bold)),
+        Text('Ver todas', style: TextStyle(color: AppColors.moradoPrincipal, fontSize: 13, fontWeight: FontWeight.w500)),
+      ],
+    );
+  }
+
+  Widget _buildEntradasList(BuildContext context) {
+    final inventoryProvider = Provider.of<InventoryProvider>(context);
+
+    if (inventoryProvider.isLoading) {
+      return const Center(child: CircularProgressIndicator(color: AppColors.moradoPrincipal));
+    }
+
+    if (inventoryProvider.entries.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 40),
+        child: Text('No hay entradas registradas.', style: TextStyle(color: Colors.white54)),
+      );
+    }
+
+    return Column(
+      children: inventoryProvider.entries.map((tx) {
+        final pNames = (tx['items'] as List?)?.map((i) => i['productName']).join(', ') ?? 'Varios';
+        final prov = tx['supplierName'] ?? 'General';
+        final val = '\$${((tx['totalAmount'] as num?)?.toDouble() ?? 0.0).toStringAsFixed(2)}';
+        
+        final DateTime dt = tx['transactionDate'] != null 
+            ? DateTime.parse(tx['transactionDate'].toString()) 
+            : DateTime.now();
+        final dateStr = "${dt.day}/${dt.month} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}";
+
+        return _entradaItem(context, pNames, prov, dateStr, 'Completada', val, Colors.greenAccent);
+      }).toList(),
+    );
+  }
+
+  Widget _entradaItem(BuildContext context, String name, String prov, String date, String status, String value, Color statusColor) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 15),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: AppColors.getCardColor(context), 
+        borderRadius: BorderRadius.circular(22), 
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), shape: BoxShape.circle),
+            child: Icon(Icons.download_rounded, color: statusColor, size: 20),
+          ),
+          const SizedBox(width: 15),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name, style: TextStyle(color: AppColors.getTextColor(context), fontWeight: FontWeight.bold, fontSize: 14), overflow: TextOverflow.ellipsis),
+                Text(prov, style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 11)),
+                Text(date, style: TextStyle(color: AppColors.getSubtextColor(context).withValues(alpha: 0.5), fontSize: 10)),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(status, style: TextStyle(color: statusColor, fontSize: 9, fontWeight: FontWeight.bold)),
+              Text(value, style: TextStyle(color: AppColors.getTextColor(context), fontWeight: FontWeight.bold, fontSize: 14)),
+            ],
+          ),
+          const SizedBox(width: 5),
+          const Icon(Icons.chevron_right_rounded, color: Colors.white24),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFooterSummary(BuildContext context) {
+    final inventoryProvider = Provider.of<InventoryProvider>(context);
+    final count = inventoryProvider.entries.length;
+    final total = inventoryProvider.entries.fold(0.0, (sum, e) => sum + ((e['totalAmount'] as num?)?.toDouble() ?? 0.0));
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.getCardColor(context), 
+        borderRadius: BorderRadius.circular(20), 
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.auto_graph_rounded, color: AppColors.moradoPrincipal, size: 24),
+          const SizedBox(width: 15),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Total registrado', style: TextStyle(color: AppColors.getTextColor(context), fontWeight: FontWeight.bold, fontSize: 14)),
+                Text('$count entradas', style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 12)),
+              ],
+            ),
+          ),
+          Text('\$${total.toStringAsFixed(2)}', style: const TextStyle(color: AppColors.moradoPrincipal, fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(width: 5),
+          const Icon(Icons.chevron_right_rounded, color: Colors.white24),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSnakeNavBar(BuildContext context) {
+    double width = MediaQuery.of(context).size.width;
+    double itemWidth = (width - 40) / 5;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 30),
+      height: 75,
+      decoration: BoxDecoration(
+        color: AppColors.getCardColor(context).withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.1), blurRadius: 20, offset: const Offset(0, 10))],
+      ),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.elasticOut,
+            left: (_selectedIndex * itemWidth) + (itemWidth / 2) - 28,
+            top: 10,
+            child: Container(
+              width: 56, height: 52,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: AppColors.moradoPrincipal.withValues(alpha: 0.5), width: 1.5),
+                boxShadow: [BoxShadow(color: AppColors.moradoPrincipal.withValues(alpha: 0.15), blurRadius: 10, spreadRadius: 1)],
+              ),
+            ),
+          ),
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.elasticOut,
+            left: (_selectedIndex * itemWidth) + (itemWidth / 2) - 2.5,
+            bottom: 8,
+            child: Container(width: 5, height: 5, decoration: const BoxDecoration(color: AppColors.moradoPrincipal, shape: BoxShape.circle)),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _navBtn(context, 0, Icons.home_rounded, 'Inicio'),
+              _navBtn(context, 1, Icons.inventory_2_rounded, 'Producto'),
+              _navBtn(context, 2, Icons.download_rounded, 'Entrada'),
+              _navBtn(context, 3, Icons.upload_rounded, 'Salidas'),
+              _navBtn(context, 4, Icons.settings_rounded, 'Ajustes'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _navBtn(BuildContext context, int i, IconData ico, String lab) {
+    bool act = _selectedIndex == i;
+    return Expanded(
+      child: InkWell(
+        onTap: () {
+          if (i == 0) Navigator.pushReplacementNamed(context, AppRoutes.dashboard);
+          else if (i == 1) Navigator.pushReplacementNamed(context, AppRoutes.products);
+          else if (i == 3) Navigator.pushReplacementNamed(context, AppRoutes.exits);
+          else if (i == 4) Navigator.pushReplacementNamed(context, AppRoutes.settings);
+        },
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(ico, color: act ? (Theme.of(context).brightness == Brightness.dark ? Colors.white : AppColors.moradoPrincipal) : AppColors.getSubtextColor(context), size: 24),
+            const SizedBox(height: 4),
+            Text(lab, style: TextStyle(color: act ? (Theme.of(context).brightness == Brightness.dark ? Colors.white : AppColors.moradoPrincipal) : AppColors.getSubtextColor(context), fontSize: 10)),
+          ],
+        ),
+      ),
+    );
+  }
+}
