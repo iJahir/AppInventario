@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const sql = require('mssql');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 app.use(cors());
@@ -28,6 +30,50 @@ sql.connect(dbConfig)
     .catch(err => {
         console.error('❌ Error de conexión a SQL Server:', err.message);
     });
+
+// ==========================================
+// RESPALDOS AUTOMÁTICOS
+// ==========================================
+const backupDir = 'c:\\Workspace\\Repositorios\\AppInventario\\db\\backups';
+if (!fs.existsSync(backupDir)) {
+    fs.mkdirSync(backupDir, { recursive: true });
+}
+
+async function createBackup() {
+    try {
+        const pool = await sql.connect(dbConfig);
+        const dateStr = new Date().toISOString().replace(/[:.]/g, '-');
+        const backupPath = path.join(backupDir, `backup_${dateStr}.bak`);
+        
+        // Ejecutar query de backup en SQL Server
+        const query = `BACKUP DATABASE [inventario_multiplataforma] TO DISK = '${backupPath}' WITH FORMAT, INIT, NAME = 'Full Backup de inventario_multiplataforma';`;
+        await pool.request().query(query);
+        console.log(`✅ Respaldo generado correctamente en: ${backupPath}`);
+        return backupPath;
+    } catch (err) {
+        console.error('❌ Error al generar respaldo:', err.message);
+        throw err;
+    }
+}
+
+// Configurar respaldo automático diario a las 2:00 AM usando setInterval
+setInterval(() => {
+    const now = new Date();
+    if (now.getHours() === 2 && now.getMinutes() === 0) {
+        console.log('⏰ Iniciando respaldo automático diario...');
+        createBackup().catch(() => {});
+    }
+}, 60 * 1000);
+
+// Endpoint para forzar respaldo manual
+app.post('/api/backup', async (req, res) => {
+    try {
+        const backupPath = await createBackup();
+        res.json({ message: 'Respaldo generado exitosamente.', path: backupPath });
+    } catch (err) {
+        res.status(500).json({ message: 'Error al generar el respaldo.', error: err.message });
+    }
+});
 
 // ==========================================
 // ENDPOINTS DE AUTENTICACIÓN

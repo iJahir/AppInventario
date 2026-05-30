@@ -14,6 +14,14 @@ class SalidaScreen extends StatefulWidget {
 
 class _SalidaScreenState extends State<SalidaScreen> {
   final int _selectedIndex = 3;
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -122,7 +130,31 @@ class _SalidaScreenState extends State<SalidaScreen> {
     );
   }
 
+  List<double> _calculateWeeklyStats(List<Map<String, dynamic>> exits) {
+    List<double> dayTotals = List.filled(7, 0.0);
+    DateTime now = DateTime.now();
+    int currentWeekday = now.weekday; 
+    DateTime startOfWeek = now.subtract(Duration(days: currentWeekday - 1));
+    startOfWeek = DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day);
+
+    for (var exitTx in exits) {
+      DateTime dt = DateTime.tryParse(exitTx['transactionDate'].toString()) ?? DateTime.now();
+      if (dt.isAfter(startOfWeek) || dt.isAtSameMomentAs(startOfWeek)) {
+        int dayIndex = dt.weekday - 1;
+        dayTotals[dayIndex] += 1; // Count of exits
+      }
+    }
+
+    double maxVal = dayTotals.reduce((a, b) => a > b ? a : b);
+    if (maxVal == 0) return List.filled(7, 0.1);
+
+    return dayTotals.map((val) => (val / maxVal).clamp(0.1, 1.0)).toList();
+  }
+
   Widget _buildMiniDashboard(BuildContext context) {
+    final inventoryProvider = Provider.of<InventoryProvider>(context);
+    final stats = _calculateWeeklyStats(inventoryProvider.exits);
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -149,13 +181,13 @@ class _SalidaScreenState extends State<SalidaScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                _buildBar(0.3, 'L'),
-                _buildBar(0.5, 'M'),
-                _buildBar(0.7, 'M'),
-                _buildBar(0.4, 'J'),
-                _buildBar(0.9, 'V'),
-                _buildBar(0.6, 'S'),
-                _buildBar(0.2, 'D'),
+                _buildBar(stats[0], 'L'),
+                _buildBar(stats[1], 'M'),
+                _buildBar(stats[2], 'M'),
+                _buildBar(stats[3], 'J'),
+                _buildBar(stats[4], 'V'),
+                _buildBar(stats[5], 'S'),
+                _buildBar(stats[6], 'D'),
               ],
             ),
           ),
@@ -247,7 +279,24 @@ class _SalidaScreenState extends State<SalidaScreen> {
               children: [
                 Icon(Icons.search, color: AppColors.getSubtextColor(context), size: 20),
                 const SizedBox(width: 10),
-                Text('Buscar salidas...', style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 14)),
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (value) {
+                      setState(() {
+                        _searchQuery = value.toLowerCase();
+                      });
+                    },
+                    style: TextStyle(color: AppColors.getTextColor(context), fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: 'Buscar salidas...',
+                      hintStyle: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 14),
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -283,7 +332,16 @@ class _SalidaScreenState extends State<SalidaScreen> {
       return const Center(child: CircularProgressIndicator(color: AppColors.moradoPrincipal));
     }
 
-    if (inventoryProvider.exits.isEmpty) {
+    var filteredExits = inventoryProvider.exits;
+    if (_searchQuery.isNotEmpty) {
+      filteredExits = filteredExits.where((tx) {
+        final pNames = (tx['items'] as List?)?.map((i) => i['productName']).join(', ').toLowerCase() ?? '';
+        final client = (tx['customerName']?.toString().toLowerCase() ?? '');
+        return pNames.contains(_searchQuery) || client.contains(_searchQuery);
+      }).toList();
+    }
+
+    if (filteredExits.isEmpty) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 40),
         child: Text('No hay salidas registradas.', style: TextStyle(color: Colors.white54)),
@@ -291,7 +349,7 @@ class _SalidaScreenState extends State<SalidaScreen> {
     }
 
     return Column(
-      children: inventoryProvider.exits.map((tx) {
+      children: filteredExits.map((tx) {
         final pNames = (tx['items'] as List?)?.map((i) => i['productName']).join(', ') ?? 'Varios';
         final client = tx['customerName'] ?? 'General';
         final val = '\$${((tx['totalAmount'] as num?)?.toDouble() ?? 0.0).toStringAsFixed(2)}';

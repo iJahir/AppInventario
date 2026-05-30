@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
 import 'package:provider/provider.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../utils/routes.dart';
 import '../utils/app_colors.dart';
+import '../utils/db_config.dart';
 import '../providers/theme_provider.dart';
+import '../providers/auth_provider.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -14,6 +18,18 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final int _selectedIndex = 4;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final role = Provider.of<AuthProvider>(context, listen: false).user?.role;
+      if (role != 'ADMIN') {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Acceso denegado. Se requiere rol ADMIN.')));
+        Navigator.pushReplacementNamed(context, AppRoutes.dashboard);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,8 +62,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildBusinessCard(context),
-                        const SizedBox(height: 30),
                         _buildSectionTitle('Preferencias', context),
                         const SizedBox(height: 15),
                         _buildSettingsGroup(context, [
@@ -109,6 +123,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         _buildSectionTitle('Más opciones', context),
                         const SizedBox(height: 15),
                         _buildOptionsGrid(context),
+                        const SizedBox(height: 15),
+                        _buildSettingsGroup(context, [
+                          _buildSettingItem(
+                            context,
+                            Icons.backup_outlined,
+                            'Respaldo Manual',
+                            'Crear copia de seguridad de la BD',
+                            color: Colors.blueAccent,
+                            onTap: () async {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Generando respaldo en el servidor...')),
+                              );
+                              try {
+                                final response = await http.post(Uri.parse('${DbConfig.apiBaseUrl}/backup'));
+                                if (response.statusCode == 200) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Respaldo generado exitosamente.'), backgroundColor: Colors.green),
+                                  );
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Error al generar respaldo.'), backgroundColor: Colors.red),
+                                  );
+                                }
+                              } catch (e) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Error de conexión con el servidor.'), backgroundColor: Colors.red),
+                                );
+                              }
+                            },
+                          ),
+                        ]),
                         const SizedBox(height: 30),
                         _buildLogoutButton(context),
                         const SizedBox(height: 20),

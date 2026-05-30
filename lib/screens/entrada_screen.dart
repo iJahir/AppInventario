@@ -14,6 +14,14 @@ class EntradaScreen extends StatefulWidget {
 
 class _EntradaScreenState extends State<EntradaScreen> {
   final int _selectedIndex = 2;
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -122,7 +130,34 @@ class _EntradaScreenState extends State<EntradaScreen> {
     );
   }
 
+  List<double> _calculateWeeklyStats(List<Map<String, dynamic>> entries) {
+    List<double> dayTotals = List.filled(7, 0.0);
+    DateTime now = DateTime.now();
+    int currentWeekday = now.weekday; 
+    DateTime startOfWeek = now.subtract(Duration(days: currentWeekday - 1));
+    startOfWeek = DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day);
+
+    for (var entry in entries) {
+      DateTime dt = DateTime.tryParse(entry['transactionDate'].toString()) ?? DateTime.now();
+      if (dt.isAfter(startOfWeek) || dt.isAtSameMomentAs(startOfWeek)) {
+        int dayIndex = dt.weekday - 1;
+        double amount = (entry['totalAmount'] as num?)?.toDouble() ?? 0.0;
+        dayTotals[dayIndex] += amount; // We can use total amount or count. Let's use count for activity or total amount. Let's use count.
+        // Or wait, let's use count of entries as bars
+        dayTotals[dayIndex] += 1;
+      }
+    }
+
+    double maxVal = dayTotals.reduce((a, b) => a > b ? a : b);
+    if (maxVal == 0) return List.filled(7, 0.1);
+
+    return dayTotals.map((val) => (val / maxVal).clamp(0.1, 1.0)).toList();
+  }
+
   Widget _buildMiniDashboard(BuildContext context) {
+    final inventoryProvider = Provider.of<InventoryProvider>(context);
+    final stats = _calculateWeeklyStats(inventoryProvider.entries);
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -149,13 +184,13 @@ class _EntradaScreenState extends State<EntradaScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                _buildBar(0.4, 'L'),
-                _buildBar(0.6, 'M'),
-                _buildBar(0.3, 'M'),
-                _buildBar(0.8, 'J'),
-                _buildBar(0.5, 'V'),
-                _buildBar(0.2, 'S'),
-                _buildBar(0.4, 'D'),
+                _buildBar(stats[0], 'L'),
+                _buildBar(stats[1], 'M'),
+                _buildBar(stats[2], 'M'),
+                _buildBar(stats[3], 'J'),
+                _buildBar(stats[4], 'V'),
+                _buildBar(stats[5], 'S'),
+                _buildBar(stats[6], 'D'),
               ],
             ),
           ),
@@ -245,7 +280,24 @@ class _EntradaScreenState extends State<EntradaScreen> {
               children: [
                 Icon(Icons.search, color: AppColors.getSubtextColor(context), size: 20),
                 const SizedBox(width: 10),
-                Text('Buscar entradas...', style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 14)),
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (value) {
+                      setState(() {
+                        _searchQuery = value.toLowerCase();
+                      });
+                    },
+                    style: TextStyle(color: AppColors.getTextColor(context), fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: 'Buscar entradas...',
+                      hintStyle: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 14),
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -281,7 +333,16 @@ class _EntradaScreenState extends State<EntradaScreen> {
       return const Center(child: CircularProgressIndicator(color: AppColors.moradoPrincipal));
     }
 
-    if (inventoryProvider.entries.isEmpty) {
+    var filteredEntries = inventoryProvider.entries;
+    if (_searchQuery.isNotEmpty) {
+      filteredEntries = filteredEntries.where((tx) {
+        final pNames = (tx['items'] as List?)?.map((i) => i['productName']).join(', ').toLowerCase() ?? '';
+        final prov = (tx['supplierName']?.toString().toLowerCase() ?? '');
+        return pNames.contains(_searchQuery) || prov.contains(_searchQuery);
+      }).toList();
+    }
+
+    if (filteredEntries.isEmpty) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 40),
         child: Text('No hay entradas registradas.', style: TextStyle(color: Colors.white54)),
@@ -289,7 +350,7 @@ class _EntradaScreenState extends State<EntradaScreen> {
     }
 
     return Column(
-      children: inventoryProvider.entries.map((tx) {
+      children: filteredEntries.map((tx) {
         final pNames = (tx['items'] as List?)?.map((i) => i['productName']).join(', ') ?? 'Varios';
         final prov = tx['supplierName'] ?? 'General';
         final val = '\$${((tx['totalAmount'] as num?)?.toDouble() ?? 0.0).toStringAsFixed(2)}';

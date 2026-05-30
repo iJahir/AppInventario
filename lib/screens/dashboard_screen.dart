@@ -237,6 +237,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _showNotificationModal(BuildContext context) {
+    final inventoryProvider = Provider.of<InventoryProvider>(context, listen: false);
+    final recentTx = inventoryProvider.transactions.take(5).toList();
+
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
@@ -269,14 +272,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(color: AppColors.moradoPrincipal.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(10)),
-                        child: const Text('3 Nuevas', style: TextStyle(color: AppColors.moradoPrincipal, fontSize: 10, fontWeight: FontWeight.bold)),
+                        child: Text('${recentTx.length} Nuevas', style: const TextStyle(color: AppColors.moradoPrincipal, fontSize: 10, fontWeight: FontWeight.bold)),
                       ),
                     ],
                   ),
                   const SizedBox(height: 20),
-                  _notificationItem(context, Icons.info_outline_rounded, 'Información general', 'El sistema se actualizó correctamente.', AppColors.azulPrincipal),
-                  _notificationItem(context, Icons.swap_horiz_rounded, 'Movimientos', 'Se detectó una salida inusual de stock.', Colors.orangeAccent),
-                  _notificationItem(context, Icons.star_outline_rounded, 'Premium', 'Disfruta de tus nuevas gráficas.', AppColors.moradoPrincipal),
+                  if (recentTx.isEmpty)
+                    const Text('No hay notificaciones recientes.', style: TextStyle(color: Colors.white54, fontSize: 12))
+                  else
+                    ...recentTx.map((tx) {
+                      final isEntrada = tx['type'] == 'ENTRADA';
+                      final isSalida = tx['type'] == 'SALIDA';
+                      final pNames = (tx['items'] as List?)?.map((i) => i['productName']).join(', ') ?? 'Varios';
+                      final title = isEntrada ? 'Entrada registrada' : (isSalida ? 'Salida registrada' : 'Transferencia');
+                      final color = isEntrada ? Colors.greenAccent : (isSalida ? Colors.orangeAccent : Colors.blueAccent);
+                      final icon = isEntrada ? Icons.download_rounded : (isSalida ? Icons.upload_rounded : Icons.swap_horiz_rounded);
+                      return _notificationItem(context, icon, title, pNames, color);
+                    }),
                   const SizedBox(height: 10),
                   Center(
                     child: TextButton(
@@ -871,9 +883,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           } else if (i == 2) {
              Navigator.pushNamed(context, AppRoutes.entries);
           } else if (i == 3) {
-             Navigator.pushNamed(context, AppRoutes.exits);
+             Navigator.pushReplacementNamed(context, AppRoutes.exits);
           } else if (i == 4) {
-             Navigator.pushNamed(context, AppRoutes.settings);
+            final authRole = Provider.of<AuthProvider>(context, listen: false).user?.role;
+            if (authRole == 'ADMIN') {
+              Navigator.pushReplacementNamed(context, AppRoutes.settings);
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Acceso denegado. Solo ADMIN.')));
+            }
           } else {
             setState(() => _selectedIndex = i);
           }
