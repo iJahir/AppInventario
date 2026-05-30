@@ -86,7 +86,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _buildHeader(context, 'Hola, ${Provider.of<AuthProvider>(context).user?.name ?? "Usuario"} 👋', 'Bienvenido de nuevo'),
           const SizedBox(height: 30),
           _buildSummaryCard(),
-          const SizedBox(height: 30),
+          const SizedBox(height: 25),
+          _buildQuickActions(context),
+          const SizedBox(height: 25),
           _buildSectionTitle(context, 'Actividad reciente'),
           const SizedBox(height: 15),
           _buildActivityList(context),
@@ -96,6 +98,114 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _buildPromotionCard(context),
           const SizedBox(height: 120),
         ],
+      ),
+    );
+  }
+
+  Widget _buildQuickActions(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Accesos Directos Ejecutivos',
+          style: TextStyle(
+            color: AppColors.getTextColor(context),
+            fontSize: 15,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 12),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          child: Row(
+            children: [
+              _buildQuickActionItem(
+                context: context,
+                label: 'Reportes',
+                icon: Icons.bar_chart_rounded,
+                color: Colors.purpleAccent,
+                route: AppRoutes.reports,
+              ),
+              _buildQuickActionItem(
+                context: context,
+                label: 'Transferir',
+                icon: Icons.swap_horiz_rounded,
+                color: AppColors.azulPrincipal,
+                route: AppRoutes.transfers,
+              ),
+              _buildQuickActionItem(
+                context: context,
+                label: 'Auditoría',
+                icon: Icons.warehouse_rounded,
+                color: Colors.orangeAccent,
+                route: AppRoutes.inventoryByWarehouse,
+              ),
+              _buildQuickActionItem(
+                context: context,
+                label: 'Sedes/Almacén',
+                icon: Icons.store_rounded,
+                color: Colors.tealAccent,
+                route: AppRoutes.warehouses,
+              ),
+              _buildQuickActionItem(
+                context: context,
+                label: 'Proveedores',
+                icon: Icons.business_rounded,
+                color: Colors.pinkAccent,
+                route: AppRoutes.suppliers,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQuickActionItem({
+    required BuildContext context,
+    required String label,
+    required IconData icon,
+    required Color color,
+    required String route,
+  }) {
+    return GestureDetector(
+      onTap: () => Navigator.pushNamed(context, route),
+      child: Container(
+        margin: const EdgeInsets.only(right: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppColors.getCardColor(context),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 8,
+            )
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 16),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              label,
+              style: TextStyle(
+                color: AppColors.getTextColor(context),
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -236,44 +346,242 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildSummaryCard() {
     final productProvider = Provider.of<ProductProvider>(context);
     final inventoryProvider = Provider.of<InventoryProvider>(context);
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final totalProducts = productProvider.products.length.toString();
-    final totalStock = productProvider.products.fold(0, (sum, p) => sum + p.stock).toString();
-    final totalEntries = inventoryProvider.entries.length.toString();
-    final totalExits = inventoryProvider.exits.length.toString();
-    final totalWarehouses = inventoryProvider.warehouses.length.toString();
+    final totalProducts = productProvider.products.length;
+    final totalStock = productProvider.products.fold(0, (sum, p) => sum + p.stock);
+    final totalWarehouses = inventoryProvider.warehouses.length;
+    final totalSuppliers = inventoryProvider.suppliers.length;
+    
+    // Calcular valor total del inventario: existencias * precio de compra (o precio * 0.7 de fallback)
+    final double totalValue = productProvider.products.fold(
+      0.0, 
+      (sum, p) => sum + (p.stock * (p.purchasePrice ?? (p.price * 0.7)))
+    );
 
+    // Identificar alertas de stock
+    final outOfStockCount = productProvider.products.where((p) => p.stock == 0).length;
+    final lowStockCount = productProvider.products.where((p) => p.stock > 0 && p.stock <= (p.minStock ?? 0)).length;
+    final totalAlerts = outOfStockCount + lowStockCount;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Card Principal: Valor Total de Inventario (Financial Portfolio)
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                AppColors.moradoPrincipal.withValues(alpha: 0.85),
+                AppColors.azulPrincipal.withValues(alpha: 0.85)
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.azulPrincipal.withValues(alpha: 0.35),
+                blurRadius: 25,
+                offset: const Offset(0, 10)
+              )
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.account_balance_wallet_rounded, color: Colors.white, size: 20),
+                      ),
+                      const SizedBox(width: 10),
+                       const Text(
+                        'Valor de Inventario (Costo)',
+                        style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: const BoxDecoration(color: Colors.greenAccent, shape: BoxShape.circle),
+                        ),
+                        const SizedBox(width: 6),
+                        const Text('En tiempo real', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              Text(
+                '\$${totalValue.toStringAsFixed(2).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: -0.5,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Unidades globales: $totalStock',
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                  const Icon(Icons.trending_up_rounded, color: Colors.greenAccent, size: 20),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        
+        // Cuadrícula 2x2 de KPIs Ejecutivos Premium
+        Row(
+          children: [
+            Expanded(
+              child: _buildExecutiveKpiCard(
+                title: 'Total Productos',
+                value: totalProducts.toString(),
+                subtitle: 'SKUs Registrados',
+                icon: Icons.grid_view_rounded,
+                color: AppColors.azulPrincipal,
+                isDark: isDark,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildExecutiveKpiCard(
+                title: 'Almacenes',
+                value: totalWarehouses.toString(),
+                subtitle: 'Sedes Activas',
+                icon: Icons.warehouse_rounded,
+                color: AppColors.moradoPrincipal,
+                isDark: isDark,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildExecutiveKpiCard(
+                title: 'Proveedores',
+                value: totalSuppliers.toString(),
+                subtitle: 'Socios Activos',
+                icon: Icons.people_alt_rounded,
+                color: Colors.teal,
+                isDark: isDark,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildExecutiveKpiCard(
+                title: 'Alertas de Stock',
+                value: totalAlerts.toString(),
+                subtitle: outOfStockCount > 0 ? '$outOfStockCount Agotados' : '$lowStockCount Stock Bajo',
+                icon: Icons.warning_amber_rounded,
+                color: totalAlerts > 0 ? (outOfStockCount > 0 ? Colors.redAccent : Colors.orangeAccent) : Colors.greenAccent,
+                isDark: isDark,
+                glow: totalAlerts > 0,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildExecutiveKpiCard({
+    required String title,
+    required String value,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    required bool isDark,
+    bool glow = false,
+  }) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [AppColors.moradoPrincipal, AppColors.azulPrincipal], begin: Alignment.topLeft, end: Alignment.bottomRight),
-        borderRadius: BorderRadius.circular(30),
-        boxShadow: [BoxShadow(color: AppColors.azulPrincipal.withValues(alpha: 0.3), blurRadius: 25, offset: const Offset(0, 10))],
+        color: AppColors.getCardColor(context),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: glow ? color.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.05),
+          width: glow ? 1.5 : 1,
+        ),
+        boxShadow: [
+          if (glow)
+            BoxShadow(
+              color: color.withValues(alpha: 0.15),
+              blurRadius: 15,
+              spreadRadius: 1,
+            )
+          else
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 10,
+            )
+        ],
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Resumen general', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(10)),
-                child: const Text('Hoy', style: TextStyle(color: Colors.white, fontSize: 12)),
+              Text(
+                title,
+                style: TextStyle(
+                  color: AppColors.getSubtextColor(context),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
+              Icon(icon, color: color, size: 18),
             ],
           ),
-          const SizedBox(height: 25),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _summaryItem(totalProducts, 'Productos', Icons.grid_view_rounded),
-              _summaryItem(totalStock, 'En stock', Icons.inventory_rounded),
-              _summaryItem(totalWarehouses, 'Almacenes', Icons.warehouse_rounded),
-              _summaryItem(totalEntries, 'Entradas', Icons.download_rounded),
-              _summaryItem(totalExits, 'Salidas', Icons.upload_rounded),
-            ],
+          const SizedBox(height: 12),
+          Text(
+            value,
+            style: TextStyle(
+              color: AppColors.getTextColor(context),
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: TextStyle(
+              color: glow ? color : AppColors.getSubtextColor(context).withValues(alpha: 0.8),
+              fontSize: 10,
+              fontWeight: glow ? FontWeight.bold : FontWeight.normal,
+            ),
           ),
         ],
       ),
@@ -385,17 +693,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               }).toList(),
             ),
           ),
-      ],
-    );
-  }
-
-  Widget _summaryItem(String val, String label, IconData icon) {
-    return Column(
-      children: [
-        Icon(icon, color: Colors.white, size: 20),
-        const SizedBox(height: 10),
-        Text(val, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 10), textAlign: TextAlign.center),
       ],
     );
   }
