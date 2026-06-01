@@ -941,7 +941,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 itemBuilder: (context, index) {
                   final f = forecasts[index];
                   final int days = f['daysToDeplete'] as int;
-                  final double velocity = f['dailyVelocity'] as double;
+                  final double velocity = (f['dailyVelocity'] as num?)?.toDouble() ?? 0.0;
                   
                   Color statusColor = Colors.greenAccent;
                   String statusText = "Stock Seguro";

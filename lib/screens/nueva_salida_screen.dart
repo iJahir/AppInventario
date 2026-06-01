@@ -901,7 +901,7 @@ class _AgregarProductoSalidaModalState extends State<_AgregarProductoSalidaModal
                     ...(_pepsPreview!['breakdown'] as List).map((b) {
                       final lotId = b['lotId'] ?? '?';
                       final qty = b['quantity'] ?? 0;
-                      final cost = (b['unitCost'] ?? 0.0) as double;
+                      final cost = ((b['unitCost'] as num?)?.toDouble() ?? 0.0);
                       final sub = qty * cost;
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 2),

@@ -217,21 +217,25 @@ El proyecto incluye un script de prueba de extremo a extremo para auditar que el
 
 ## 💎 Características de la Versión Pro (Última Actualización)
 
-En esta nueva versión profesional, se incorporaron mejoras clave de seguridad, trazabilidad de costos y experiencia de usuario (UX):
+En esta nueva versión profesional de **StockMaster**, se incorporaron mejoras clave de seguridad, trazabilidad de costos y experiencia de usuario (UX):
 
-1. **Renombramiento de la Aplicación a "Inventario Pro":**
-   * Se actualizó la identidad visual y configuraciones nativas de compilación en Android, Flutter MaterialApp y pantallas principales.
-2. **Cierre Automático de Sesión por Inactividad (Seguridad Bancaria):**
+1. **Renombramiento Integral de la Aplicación a "StockMaster":**
+   * Se actualizó la identidad visual, el título de la aplicación y las configuraciones nativas de compilación en Android, Flutter MaterialApp y las barras de navegación.
+2. **Optimización de Rendimiento Extremo (Zero-Lag):**
+   * Se reestructuraron los proveedores de datos (`ProductProvider` y `InventoryProvider`) para implementar un mecanismo de **recuperación asíncrona en segundo plano (background fetching)**.
+   * Si ya existen datos almacenados en memoria, la interfaz los presenta de forma instantánea sin mostrar pantallas de carga o spinners bloqueantes. La actualización de datos desde el servidor Node.js se realiza de forma silenciosa e imperceptible, eliminando los tirones y el lag de navegación.
+3. **Trazabilidad en Tiempo Real y Desglose PEPS:**
+   * **Nueva Salida:** Se integró un panel interactivo de vista previa de costos en tiempo real. Al digitar la cantidad a vender, el sistema predice y detalla exactamente qué lotes se van a consumir de forma secuencial, calculando la ganancia estimada y el porcentaje de margen antes de guardar la transacción.
+   * **Hoja de Detalle robusta:** Se corrigió un bug de desbordamiento horizontal en el modal de transacciones recientes, garantizando un renderizado estable y compatible con cualquier smartphone Android o iOS fabricado del 2020 en adelante.
+4. **Cierre Automático de Sesión por Inactividad (Seguridad Bancaria):**
    * Se implementó un widget global `InactivityDetector` que monitorea movimientos, clics y toques del usuario.
    * Si no hay actividad durante **5 minutos**, la sesión se cierra automáticamente de forma segura, redirigiendo a la pantalla de Login y mostrando una alerta interactiva SweetAlert.
-3. **Paginación Avanzada y Vistas Especiales:**
+5. **Paginación Avanzada y Vistas Especiales:**
    * **Kardex:** Paginado dinámicamente a **10 registros por página**.
    * **Entradas y Salidas ("Ver Todas"):** Nuevas pantallas dedicadas (`AllEntriesScreen` y `AllOutputsScreen`) con filtros de búsqueda en tiempo real, ordenación inteligente y paginación nativa de 10 en 10.
-4. **Trazabilidad Completa de Lotes PEPS (FIFO):**
-   * Modales de detalle de transacciones ahora cargan de manera asíncrona mediante el widget `_TransactionDetailSheet` y renderizan de forma detallada qué lotes exactos fueron creados (en Entradas) o consumidos (en Salidas), eliminando problemas de carga infinita.
-5. **Edición/Eliminación Inline en Formularios de Movimiento:**
+6. **Edición/Eliminación Inline en Formularios de Movimiento:**
    * En los formularios de Nueva Entrada y Nueva Salida, ahora se puede editar y eliminar cualquier producto pre-agregado en la lista antes de enviar la transacción final al servidor, evitando tener que borrar y empezar de nuevo.
-6. **Extras de Descarga de Códigos QR Autónomos:**
+7. **Extras de Descarga de Códigos QR Autónomos:**
    * Se eliminaron rutas hardcodeadas de emulador para guardado. La aplicación ahora implementa un resolvedor con fallbacks inteligentes usando `path_provider` (`getDownloadsDirectory()`, `getExternalStorageDirectory()`) para guardar en la carpeta física de descargas de cualquier dispositivo móvil real.
    * Las etiquetas PDF generadas se nombran de forma limpia y profesional basándose en el producto: `[Nombre_Producto]_qr.pdf`.
    * Se añadió un banner de instrucciones e información superior en la cámara de escaneo rápido para mejorar la usabilidad del operador.
