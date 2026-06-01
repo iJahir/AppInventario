@@ -1132,27 +1132,51 @@ class _NuevoProductoScreenState extends State<NuevoProductoScreen> {
           pageFormat: PdfPageFormat.a4,
           margin: const pw.EdgeInsets.all(1.5 * PdfPageFormat.cm),
           build: (pw.Context ctx) {
-            return pw.GridView(
-              crossAxisCount: 2,
-              childAspectRatio: 1.0,
-              crossAxisSpacing: 1.0 * PdfPageFormat.cm,
-              mainAxisSpacing: 1.0 * PdfPageFormat.cm,
-              children: List<pw.Widget>.generate(pageItemsCount, (index) {
-                return pw.Container(
-                  alignment: pw.Alignment.center,
-                  decoration: pw.BoxDecoration(
-                    border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
-                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+            return pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  product.name,
+                  style: pw.TextStyle(
+                    fontSize: 18,
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColors.blueGrey900,
                   ),
-                  padding: const pw.EdgeInsets.all(0.5 * PdfPageFormat.cm),
-                  child: pw.BarcodeWidget(
-                    barcode: pw.Barcode.qrCode(),
-                    data: product.sku ?? product.id ?? product.name,
-                    width: 140,
-                    height: 140,
+                ),
+                pw.SizedBox(height: 4),
+                pw.Text(
+                  'SKU: ${product.sku ?? "N/A"}',
+                  style: const pw.TextStyle(
+                    fontSize: 12,
+                    color: PdfColors.grey700,
                   ),
-                );
-              }),
+                ),
+                pw.SizedBox(height: 15),
+                pw.Expanded(
+                  child: pw.GridView(
+                    crossAxisCount: 2,
+                    childAspectRatio: 1.0,
+                    crossAxisSpacing: 1.0 * PdfPageFormat.cm,
+                    mainAxisSpacing: 1.0 * PdfPageFormat.cm,
+                    children: List<pw.Widget>.generate(pageItemsCount, (index) {
+                      return pw.Container(
+                        alignment: pw.Alignment.center,
+                        decoration: pw.BoxDecoration(
+                          border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
+                          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+                        ),
+                        padding: const pw.EdgeInsets.all(0.5 * PdfPageFormat.cm),
+                        child: pw.BarcodeWidget(
+                          barcode: pw.Barcode.qrCode(),
+                          data: product.sku ?? product.id ?? product.name,
+                          width: 140,
+                          height: 140,
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+              ],
             );
           },
         ),

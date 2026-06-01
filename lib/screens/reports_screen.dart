@@ -889,25 +889,29 @@ class _ReportsScreenState extends State<ReportsScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              'Predicción de Demanda y Agotamiento',
-              style: TextStyle(
-                color: AppColors.getTextColor(context),
-                fontWeight: FontWeight.bold,
-                fontSize: 15,
+            Expanded(
+              child: Text(
+                'Pronóstico de Demanda y Agotamiento',
+                style: TextStyle(
+                  color: AppColors.getTextColor(context),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
+            const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: Colors.purpleAccent.withValues(alpha: 0.15),
+                color: Colors.blueAccent.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Row(
                 children: [
-                  Icon(Icons.auto_awesome_rounded, color: Colors.purpleAccent, size: 10),
+                  Icon(Icons.trending_up_rounded, color: Colors.blueAccent, size: 10),
                   SizedBox(width: 4),
-                  Text('IA Predictiva', style: TextStyle(color: Colors.purpleAccent, fontSize: 9, fontWeight: FontWeight.bold)),
+                  Text('Pronóstico', style: TextStyle(color: Colors.blueAccent, fontSize: 9, fontWeight: FontWeight.bold)),
                 ],
               ),
             ),

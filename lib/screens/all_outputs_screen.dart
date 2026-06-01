@@ -411,20 +411,30 @@ class _TransactionDetailSheetState extends State<_TransactionDetailSheet> {
   }
 
   Future<void> _loadFifoDetail() async {
-    final String transactionId = widget.tx['id']?.toString() ?? '';
-    if (transactionId.isNotEmpty) {
-      final detail = await Provider.of<ProductProvider>(context, listen: false)
-          .fetchTransactionFifoDetail(transactionId);
-      if (mounted) {
-        setState(() {
-          fifoDetail = detail;
-          fifoLoaded = true;
-          fifoLoading = false;
-        });
+    try {
+      final String transactionId = widget.tx['id']?.toString() ?? '';
+      if (transactionId.isNotEmpty) {
+        final detail = await Provider.of<ProductProvider>(context, listen: false)
+            .fetchTransactionFifoDetail(transactionId);
+        if (mounted) {
+          setState(() {
+            fifoDetail = detail;
+            fifoLoaded = true;
+            fifoLoading = false;
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            fifoLoaded = true;
+            fifoLoading = false;
+          });
+        }
       }
-    } else {
+    } catch (e) {
       if (mounted) {
         setState(() {
+          fifoDetail = [];
           fifoLoaded = true;
           fifoLoading = false;
         });
