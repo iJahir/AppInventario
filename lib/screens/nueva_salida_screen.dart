@@ -352,35 +352,55 @@ class _NuevaSalidaScreenState extends State<NuevaSalidaScreen> {
             decoration: BoxDecoration(color: AppColors.azulPrincipal.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
             child: const Icon(Icons.outbox_rounded, color: AppColors.azulPrincipal),
           ),
-          const SizedBox(width: 15),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(product['name'], style: TextStyle(color: AppColors.getTextColor(context), fontWeight: FontWeight.bold)),
                 Text("Cant: ${product['quantity']} | Unit: \$${product['price']}", style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 12)),
-                if (product['pepsBreakdown'] != null && (product['pepsBreakdown'] as List).isNotEmpty) ...[
-                  const SizedBox(height: 5),
-                  Wrap(
-                    spacing: 4,
-                    runSpacing: 2,
-                    children: (product['pepsBreakdown'] as List).map<Widget>((b) {
-                      final lotId = b['lotId'] ?? '?';
-                      final qty = b['quantity'] ?? 0;
-                      return Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: AppColors.azulPrincipal.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          'Lote #$lotId ($qty un.)',
-                          style: const TextStyle(color: AppColors.azulPrincipal, fontSize: 10, fontWeight: FontWeight.bold),
-                        ),
-                      );
-                    }).toList(),
+                const SizedBox(height: 5),
+                FutureBuilder<Map<String, dynamic>?>(
+                  future: Provider.of<ProductProvider>(context, listen: false).fetchPepsPreview(
+                    product['productId'].toString(),
+                    product['quantity'] as int,
+                    _selectedWarehouseId ?? '',
                   ),
-                ],
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const SizedBox(
+                        width: 10, height: 10,
+                        child: CircularProgressIndicator(strokeWidth: 1, color: AppColors.azulPrincipal),
+                      );
+                    }
+                    final preview = snapshot.data;
+                    if (preview == null || preview['breakdown'] == null || (preview['breakdown'] as List).isEmpty) {
+                      return Text(
+                        'Sin lotes registrados (PEPS)',
+                        style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 10, fontStyle: FontStyle.italic),
+                      );
+                    }
+                    final breakdown = preview['breakdown'] as List;
+                    return Wrap(
+                      spacing: 4,
+                      runSpacing: 2,
+                      children: breakdown.map<Widget>((b) {
+                        final lotId = b['lotId'] ?? '?';
+                        final qty = b['quantity'] ?? 0;
+                        return Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppColors.azulPrincipal.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            'Lote #$lotId ($qty un.)',
+                            style: const TextStyle(color: AppColors.azulPrincipal, fontSize: 10, fontWeight: FontWeight.bold),
+                          ),
+                        );
+                      }).toList(),
+                    );
+                  },
+                ),
               ],
             ),
           ),

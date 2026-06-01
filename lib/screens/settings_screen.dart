@@ -1559,6 +1559,16 @@ class HelpScreen extends StatelessWidget {
                     const SizedBox(height: 12),
                     _buildHelpCard(
                       context,
+                      '⛓️',
+                      '¿Cómo funciona la Trazabilidad PEPS / FIFO?',
+                      'El sistema implementa el método PEPS (Primeras Entradas, Primeras Salidas):\n\n'
+                      '• Automatización Completa: Cuando realizas una salida, el sistema busca automáticamente los lotes más antiguos registrados y debita de ellos.\n'
+                      '• Visualización en Tiempo Real: Al agregar productos en una Nueva Salida, se te mostrará una distribución detallada indicando exactamente de qué lote y costo unitario histórico se tomará cada unidad.\n'
+                      '• Consistencia Contable: Esto te garantiza un control de inventario exacto y un cálculo de costos impecable para tu negocio.',
+                    ),
+                    const SizedBox(height: 12),
+                    _buildHelpCard(
+                      context,
                       '🎨',
                       '¿Cómo activar el modo oscuro o claro?',
                       'La aplicación cuenta con soporte premium para temas adaptativos:\n\n'
