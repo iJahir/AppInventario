@@ -1,11 +1,34 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/offline_db_service.dart';
+import '../services/notification_service.dart';
 import '../models/product_model.dart';
 
 class InventoryProvider extends ChangeNotifier {
   final ApiService _apiService = ApiService();
   final AuthService _authService = AuthService();
+
+  bool _lastTransactionOffline = false;
+  bool get lastTransactionOffline => _lastTransactionOffline;
+
+  bool _lastTransferOffline = false;
+  bool get lastTransferOffline => _lastTransferOffline;
+
+  InventoryProvider() {
+    _initConnectivityListener();
+  }
+
+  void _initConnectivityListener() {
+    Connectivity().onConnectivityChanged.listen((List<ConnectivityResult> results) {
+      if (!results.contains(ConnectivityResult.none)) {
+        syncOfflineTransactions();
+      }
+    });
+  }
 
   List<Map<String, dynamic>> _warehouses = [];
   List<Map<String, dynamic>> _suppliers = [];
@@ -13,6 +36,7 @@ class InventoryProvider extends ChangeNotifier {
   List<Map<String, dynamic>> _transactions = [];
   List<ProductModel> _warehouseProducts = [];
   List<Map<String, dynamic>> _transfers = [];
+  String? _logoUrl;
   bool _isLoading = false;
   String? _errorMessage;
 
@@ -22,12 +46,55 @@ class InventoryProvider extends ChangeNotifier {
   List<Map<String, dynamic>> get transactions => _transactions;
   List<ProductModel> get warehouseProducts => _warehouseProducts;
   List<Map<String, dynamic>> get transfers => _transfers;
+  String? get logoUrl => _logoUrl;
   
   List<Map<String, dynamic>> get entries => _transactions.where((t) => t['type'] == 'ENTRADA').toList();
   List<Map<String, dynamic>> get exits => _transactions.where((t) => t['type'] == 'SALIDA').toList();
 
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
+
+  /// Obtiene el logo actual de la empresa desde SQL Server
+  Future<void> fetchLogo() async {
+    try {
+      final token = await _authService.getToken();
+      final response = await _apiService.get('/logo', token: token);
+      if (response != null && response['logoUrl'] != null) {
+        _logoUrl = response['logoUrl'];
+      } else {
+        _logoUrl = null;
+      }
+      notifyListeners();
+    } catch (e) {
+      print('fetchLogo error: $e');
+    }
+  }
+
+  /// Sube y actualiza el logo de la empresa
+  Future<bool> uploadLogo(String base64Image) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final token = await _authService.getToken();
+      final response = await _apiService.post('/logo', {'base64Image': base64Image}, token: token);
+      if (response != null && response['success'] == true) {
+        _logoUrl = response['logoUrl'];
+        _isLoading = false;
+        notifyListeners();
+        return true;
+      }
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _isLoading = false;
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      notifyListeners();
+      return false;
+    }
+  }
 
   /// Obtiene los almacenes, proveedores y clientes desde SQL Server
   Future<void> fetchConfigData() async {
@@ -37,6 +104,9 @@ class InventoryProvider extends ChangeNotifier {
 
     try {
       final token = await _authService.getToken();
+      
+      // Intentar cargar el logo también
+      await fetchLogo();
       
       final wResponse = await _apiService.get('/warehouses', token: token);
       final sResponse = await _apiService.get('/suppliers', token: token);
@@ -95,22 +165,24 @@ class InventoryProvider extends ChangeNotifier {
     String? customerId,
     required String observations,
     required List<Map<String, dynamic>> items,
+    String? reason,
   }) async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      final token = await _authService.getToken();
-      final user = await _authService.getSavedUser();
-      
+      final connectivityResult = await Connectivity().checkConnectivity();
+      final isOffline = connectivityResult.contains(ConnectivityResult.none);
+
       final payload = {
         'type': type,
         'warehouseId': warehouseId,
         'supplierId': supplierId,
         'customerId': customerId,
         'observations': observations,
-        'userId': user?.id ?? '1',
+        'userId': '1',
+        'reason': reason ?? 'Venta',
         'items': items.map((i) => {
           'productId': i['productId'].toString(),
           'quantity': i['quantity'],
@@ -118,9 +190,44 @@ class InventoryProvider extends ChangeNotifier {
         }).toList()
       };
 
+      if (isOffline) {
+        await OfflineDbService.insertOfflineTransaction('TRANSACTION', payload);
+        _lastTransactionOffline = true;
+        _isLoading = false;
+        notifyListeners();
+        return true;
+      }
+
+      _lastTransactionOffline = false;
+      final token = await _authService.getToken();
+      final user = await _authService.getSavedUser();
+      payload['userId'] = user?.id ?? '1';
+
       final response = await _apiService.post('/transactions', payload, token: token);
 
       if (response != null) {
+        // En caso de SALIDA, chequear si cruza el stock mínimo localmente para notificar
+        for (var i in items) {
+          if (type == 'SALIDA') {
+            final int? currentStock = i['currentStock'] as int?;
+            final int? minStock = i['minStock'] as int?;
+            final int quantity = i['quantity'] as int;
+            final String name = i['name'] as String? ?? 'Producto';
+            final int prodId = int.tryParse(i['productId'].toString()) ?? 0;
+            if (currentStock != null && minStock != null) {
+              final newStock = currentStock - quantity;
+              if (newStock < minStock) {
+                await NotificationService.showLowStockNotification(
+                  id: prodId,
+                  name: name,
+                  stock: newStock,
+                  minStock: minStock,
+                );
+              }
+            }
+          }
+        }
+
         // Recargar transacciones para tener el listado al día
         await fetchTransactions();
         return true;
@@ -220,6 +327,94 @@ class InventoryProvider extends ChangeNotifier {
       _isLoading = false;
       _errorMessage = e.toString().replaceAll('Exception: ', '');
       print('deleteSupplier error: $e');
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Crea un nuevo cliente
+  Future<bool> addCustomer(String name, String taxId) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final token = await _authService.getToken();
+      final payload = {
+        'name': name,
+        'taxId': taxId,
+      };
+
+      final response = await _apiService.post('/customers', payload, token: token);
+
+      if (response != null) {
+        await fetchConfigData();
+        return true;
+      }
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _isLoading = false;
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      print('addCustomer error: $e');
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Actualiza un cliente existente
+  Future<bool> updateCustomer(String id, String name, String taxId) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final token = await _authService.getToken();
+      final payload = {
+        'name': name,
+        'taxId': taxId,
+      };
+
+      final response = await _apiService.put('/customers/$id', payload, token: token);
+
+      if (response != null) {
+        await fetchConfigData();
+        return true;
+      }
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _isLoading = false;
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      print('updateCustomer error: $e');
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Elimina un cliente
+  Future<bool> deleteCustomer(String id) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final token = await _authService.getToken();
+      final response = await _apiService.delete('/customers/$id', token: token);
+
+      if (response != null) {
+        await fetchConfigData();
+        return true;
+      }
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _isLoading = false;
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      print('deleteCustomer error: $e');
       notifyListeners();
       return false;
     }
@@ -380,7 +575,9 @@ class InventoryProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final token = await _authService.getToken();
+      final connectivityResult = await Connectivity().checkConnectivity();
+      final isOffline = connectivityResult.contains(ConnectivityResult.none);
+
       final payload = {
         'fromWarehouseId': fromWarehouseId,
         'toWarehouseId': toWarehouseId,
@@ -389,6 +586,16 @@ class InventoryProvider extends ChangeNotifier {
         'userId': userId,
       };
 
+      if (isOffline) {
+        await OfflineDbService.insertOfflineTransaction('TRANSFER', payload);
+        _lastTransferOffline = true;
+        _isLoading = false;
+        notifyListeners();
+        return true;
+      }
+
+      _lastTransferOffline = false;
+      final token = await _authService.getToken();
       final response = await _apiService.post('/transfers', payload, token: token);
 
       if (response != null) {
@@ -405,6 +612,76 @@ class InventoryProvider extends ChangeNotifier {
       notifyListeners();
       return false;
     }
+  }
+
+  /// Sincroniza las transacciones guardadas localmente cuando vuelve la conexión
+  Future<void> syncOfflineTransactions() async {
+    final connectivityResult = await Connectivity().checkConnectivity();
+    if (connectivityResult.contains(ConnectivityResult.none)) return;
+
+    final pending = await OfflineDbService.getPendingTransactions();
+    if (pending.isEmpty) return;
+
+    final token = await _authService.getToken();
+
+    for (var tx in pending) {
+      final id = tx['id'] as int;
+      final type = tx['type'] as String;
+      final payload = Map<String, dynamic>.from(jsonDecode(tx['payload'] as String));
+
+      try {
+        if (type == 'TRANSACTION') {
+          final response = await _apiService.post('/transactions', payload, token: token);
+          if (response != null) {
+            await OfflineDbService.deleteTransaction(id);
+            const androidDetails = AndroidNotificationDetails(
+              'sync_channel',
+              'Sincronización',
+              channelDescription: 'Notifica la sincronización exitosa offline',
+              importance: Importance.max,
+              priority: Priority.high,
+              color: Color(0xFF4CAF50),
+            );
+            final details = const NotificationDetails(android: androidDetails, iOS: DarwinNotificationDetails());
+            final flutterNotifications = FlutterLocalNotificationsPlugin();
+            await flutterNotifications.show(
+              id,
+              '🔄 Sincronización Exitosa',
+              'Una transacción guardada offline (${payload['type']}) fue enviada con éxito al servidor.',
+              details,
+            );
+          }
+        } else if (type == 'TRANSFER') {
+          final response = await _apiService.post('/transfers', payload, token: token);
+          if (response != null) {
+            await OfflineDbService.deleteTransaction(id);
+            const androidDetails = AndroidNotificationDetails(
+              'sync_channel',
+              'Sincronización',
+              channelDescription: 'Notifica la sincronización exitosa offline',
+              importance: Importance.max,
+              priority: Priority.high,
+              color: Color(0xFF4CAF50),
+            );
+            final details = const NotificationDetails(android: androidDetails, iOS: DarwinNotificationDetails());
+            final flutterNotifications = FlutterLocalNotificationsPlugin();
+            await flutterNotifications.show(
+              id,
+              '🔄 Transferencia Sincronizada',
+              'Una transferencia offline entre almacenes se sincronizó correctamente.',
+              details,
+            );
+          }
+        }
+      } catch (e) {
+        print('Error syncing offline transaction $id: $e');
+        break;
+      }
+    }
+
+    await fetchTransactions();
+    await fetchTransfers();
+    notifyListeners();
   }
 }
 

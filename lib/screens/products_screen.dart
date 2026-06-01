@@ -5,6 +5,7 @@ import '../providers/product_provider.dart';
 import '../models/product_model.dart';
 import '../utils/app_colors.dart';
 import '../utils/routes.dart';
+import '../utils/db_config.dart';
 import '../widgets/wavy_progress_indicator.dart';
 
 class ProductsScreen extends StatefulWidget {
@@ -20,6 +21,22 @@ class _ProductsScreenState extends State<ProductsScreen> {
   bool _isSearching = false;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+  int _currentPage = 1;
+  static const int _itemsPerPage = 10;
+
+  String _getProductImageUrl(String? localPath) {
+    if (localPath == null || localPath.isEmpty) return '';
+    if (localPath.startsWith('http://') || localPath.startsWith('https://')) {
+      return localPath;
+    }
+    final cleanedPath = localPath
+        .replaceAll('C:\\Users\\aldo1\\Documents\\InventarioAPP\\', '')
+        .replaceAll('C:\\Users\\aldo1\\Documents\\InventarioAPP', '')
+        .replaceAll('\\', '/');
+    
+    final serverBase = DbConfig.apiBaseUrl.replaceAll('/api', '');
+    return '$serverBase/api/uploads/$cleanedPath';
+  }
 
   @override
   void dispose() {
@@ -161,6 +178,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                     onChanged: (val) {
                       setState(() {
                         _searchQuery = val.toLowerCase();
+                        _currentPage = 1;
                       });
                     },
                   )
@@ -184,6 +202,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                 } else {
                   _isSearching = true;
                 }
+                _currentPage = 1;
               });
             }
           ),
@@ -279,6 +298,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
             onTap: () {
               setState(() {
                 _selectedCategory = cats[i];
+                _currentPage = 1;
               });
             },
             child: Container(
@@ -355,10 +375,125 @@ class _ProductsScreenState extends State<ProductsScreen> {
       );
     }
 
+    final int totalItems = filteredProducts.length;
+    final int totalPages = (totalItems / _itemsPerPage).ceil();
+    if (_currentPage > totalPages && totalPages > 0) {
+      _currentPage = totalPages;
+    }
+
+    final int startIndex = (_currentPage - 1) * _itemsPerPage;
+    final int endIndex = (startIndex + _itemsPerPage) > totalItems ? totalItems : (startIndex + _itemsPerPage);
+
+    final paginatedProducts = filteredProducts.sublist(startIndex, endIndex);
+
     return Column(
-      children: filteredProducts
-          .map((p) => _buildProductItem(context, p))
-          .toList(),
+      children: [
+        // Rango de items
+        Padding(
+          padding: const EdgeInsets.only(bottom: 15),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Mostrando ${startIndex + 1}-$endIndex de $totalItems productos',
+                style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 12),
+              ),
+              Text(
+                'Pág. $_currentPage de $totalPages',
+                style: const TextStyle(color: AppColors.moradoPrincipal, fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+        ),
+
+        // Items de producto
+        ...paginatedProducts.map((p) => _buildProductItem(context, p)).toList(),
+
+        // Controles de Paginación
+        if (totalPages > 1) ...[
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Botón Anterior
+              GestureDetector(
+                onTap: _currentPage > 1 ? () => setState(() => _currentPage--) : null,
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: _currentPage > 1 ? AppColors.getCardColor(context) : AppColors.getCardColor(context).withValues(alpha: 0.5),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                  ),
+                  child: Icon(
+                    Icons.chevron_left_rounded,
+                    color: _currentPage > 1 ? AppColors.getTextColor(context) : AppColors.getSubtextColor(context).withValues(alpha: 0.3),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 15),
+
+              // Números de Página
+              ...List.generate(totalPages, (index) {
+                final pageNum = index + 1;
+                final bool isSelected = pageNum == _currentPage;
+
+                if (totalPages > 5 && (pageNum - _currentPage).abs() > 1 && pageNum != 1 && pageNum != totalPages) {
+                  if (pageNum == 2 || pageNum == totalPages - 1) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 4),
+                      child: Text('...', style: TextStyle(color: Colors.white30)),
+                    );
+                  }
+                  return const SizedBox.shrink();
+                }
+
+                return GestureDetector(
+                  onTap: () => setState(() => _currentPage = pageNum),
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: isSelected ? AppColors.moradoPrincipal : AppColors.getCardColor(context),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: isSelected ? AppColors.moradoPrincipal : Colors.white.withValues(alpha: 0.05)),
+                      boxShadow: isSelected ? [BoxShadow(color: AppColors.moradoPrincipal.withValues(alpha: 0.3), blurRadius: 8)] : null,
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      '$pageNum',
+                      style: TextStyle(
+                        color: isSelected ? Colors.white : AppColors.getTextColor(context),
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                );
+              }),
+
+              const SizedBox(width: 15),
+              // Botón Siguiente
+              GestureDetector(
+                onTap: _currentPage < totalPages ? () => setState(() => _currentPage++) : null,
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: _currentPage < totalPages ? AppColors.getCardColor(context) : AppColors.getCardColor(context).withValues(alpha: 0.5),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                  ),
+                  child: Icon(
+                    Icons.chevron_right_rounded,
+                    color: _currentPage < totalPages ? AppColors.getTextColor(context) : AppColors.getSubtextColor(context).withValues(alpha: 0.3),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
     );
   }
 
@@ -380,8 +515,37 @@ class _ProductsScreenState extends State<ProductsScreen> {
           children: [
             Container(
               height: 60, width: 60,
-              decoration: BoxDecoration(color: AppColors.moradoPrincipal.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(15)),
-              child: const Icon(Icons.image_outlined, color: AppColors.moradoPrincipal),
+              decoration: BoxDecoration(
+                color: AppColors.moradoPrincipal.withValues(alpha: 0.1), 
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: product.imageUrl != null && product.imageUrl!.isNotEmpty
+                    ? Image.network(
+                        _getProductImageUrl(product.imageUrl),
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => const Icon(
+                          Icons.image_outlined,
+                          color: AppColors.moradoPrincipal,
+                          size: 24,
+                        ),
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return const Center(
+                            child: SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppColors.moradoPrincipal,
+                              ),
+                            ),
+                          );
+                        },
+                      )
+                    : const Icon(Icons.image_outlined, color: AppColors.moradoPrincipal),
+              ),
             ),
             const SizedBox(width: 15),
             Expanded(

@@ -13,12 +13,14 @@ import '../screens/nueva_salida_screen.dart';
 import '../screens/update_password_screen.dart';
 import '../screens/suppliers_management_screen.dart';
 import '../screens/warehouses_management_screen.dart';
+import '../screens/customers_management_screen.dart';
 import '../screens/product_detail_screen.dart';
 import '../screens/product_kardex_screen.dart';
 import '../screens/warehouse_inventory_screen.dart';
 import '../screens/transfers_screen.dart';
 import '../screens/new_transfer_screen.dart';
 import '../screens/reports_screen.dart';
+import '../screens/profile_edit_screen.dart';
 
 class AppRoutes {
   static const String login = '/login';
@@ -35,12 +37,14 @@ class AppRoutes {
   static const String updatePassword = '/update-password';
   static const String suppliers = '/suppliers';
   static const String warehouses = '/warehouses';
+  static const String customers = '/customers';
   static const String productDetail = '/product-detail';
   static const String productKardex = '/product-kardex';
   static const String inventoryByWarehouse = '/inventory-by-warehouse';
   static const String transfers = '/transfers';
   static const String addTransfer = '/add-transfer';
   static const String reports = '/reports';
+  static const String editProfile = '/edit-profile';
 
   static Map<String, WidgetBuilder> getRoutes() {
     return {
@@ -58,12 +62,14 @@ class AppRoutes {
       updatePassword: (context) => const UpdatePasswordScreen(),
       suppliers: (context) => const SuppliersManagementScreen(),
       warehouses: (context) => const WarehousesManagementScreen(),
+      customers: (context) => const CustomersManagementScreen(),
       productDetail: (context) => const ProductDetailScreen(),
       productKardex: (context) => const ProductKardexScreen(),
       inventoryByWarehouse: (context) => const WarehouseInventoryScreen(),
       transfers: (context) => const TransfersScreen(),
       addTransfer: (context) => const NewTransferScreen(),
       reports: (context) => const ReportsScreen(),
+      editProfile: (context) => const ProfileEditScreen(),
     };
   }
 }

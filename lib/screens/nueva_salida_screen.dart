@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
 import 'package:provider/provider.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import '../utils/app_colors.dart';
 import '../utils/routes.dart';
 import '../providers/inventory_provider.dart';
@@ -20,6 +21,7 @@ class _NuevaSalidaScreenState extends State<NuevaSalidaScreen> {
   final List<Map<String, dynamic>> _productos = []; // { productId, name, quantity, price }
   String? _selectedCustomerId;
   String? _selectedWarehouseId;
+  String _selectedReason = 'Venta';
   final TextEditingController _obsController = TextEditingController();
   final DateTime _selectedDate = DateTime.now();
 
@@ -85,15 +87,17 @@ class _NuevaSalidaScreenState extends State<NuevaSalidaScreen> {
                           const SizedBox(height: 20),
                           _buildSectionTitle(context, 'Información general'),
                           const SizedBox(height: 15),
-                          _buildDropdownField(
-                            context,
-                            label: 'Cliente',
-                            hint: 'Seleccionar cliente',
-                            value: _selectedCustomerId,
-                            items: customerItems,
-                            onChanged: (val) => setState(() => _selectedCustomerId = val),
-                          ),
-                          const SizedBox(height: 15),
+                          if (_selectedReason == 'Venta' || _selectedReason == 'Servicio') ...[
+                            _buildDropdownField(
+                              context,
+                              label: 'Cliente',
+                              hint: 'Seleccionar cliente',
+                              value: _selectedCustomerId,
+                              items: customerItems,
+                              onChanged: (val) => setState(() => _selectedCustomerId = val),
+                            ),
+                            const SizedBox(height: 15),
+                          ],
                           _buildDateField(context, 'Fecha', _selectedDate),
                           const SizedBox(height: 15),
                           _buildDropdownField(
@@ -103,6 +107,25 @@ class _NuevaSalidaScreenState extends State<NuevaSalidaScreen> {
                             value: _selectedWarehouseId,
                             items: warehousesItems,
                             onChanged: (val) => setState(() => _selectedWarehouseId = val),
+                          ),
+                          const SizedBox(height: 15),
+                          _buildDropdownField(
+                            context,
+                            label: 'Motivo de salida',
+                            hint: 'Seleccionar motivo',
+                            value: _selectedReason,
+                            items: [
+                              {'id': 'Venta', 'name': 'Venta'},
+                              {'id': 'Consumo', 'name': 'Consumo Interno'},
+                              {'id': 'Servicio', 'name': 'Servicio'},
+                              {'id': 'Daño', 'name': 'Daño / Mermas'},
+                            ],
+                            onChanged: (val) => setState(() {
+                              _selectedReason = val ?? 'Venta';
+                              if (_selectedReason != 'Venta' && _selectedReason != 'Servicio') {
+                                _selectedCustomerId = null;
+                              }
+                            }),
                           ),
                           const SizedBox(height: 15),
                           _buildTextAreaField(context, 'Observaciones (opcional)', 'Escribe una observación...', _obsController),
@@ -409,11 +432,14 @@ class _NuevaSalidaScreenState extends State<NuevaSalidaScreen> {
             onTap: inventoryProvider.isLoading
                 ? null
                 : () async {
-                    if (_selectedWarehouseId == null || _selectedCustomerId == null) {
+                    final bool needsCustomer = _selectedReason == 'Venta' || _selectedReason == 'Servicio';
+                    if (_selectedWarehouseId == null || (needsCustomer && _selectedCustomerId == null)) {
                       SweetAlert.show(
                         context,
                         title: 'Campos Incompletos',
-                        message: 'Por favor selecciona un Almacén y un Cliente.',
+                        message: needsCustomer
+                            ? 'Por favor selecciona un Almacén y un Cliente.'
+                            : 'Por favor selecciona un Almacén de origen.',
                         type: SweetAlertType.warning,
                       );
                       return;
@@ -431,22 +457,35 @@ class _NuevaSalidaScreenState extends State<NuevaSalidaScreen> {
                     final success = await inventoryProvider.createTransaction(
                       type: 'SALIDA',
                       warehouseId: _selectedWarehouseId!,
-                      customerId: _selectedCustomerId!,
+                      customerId: needsCustomer ? _selectedCustomerId : null,
                       observations: _obsController.text.trim(),
                       items: _productos,
+                      reason: _selectedReason,
                     );
 
                     if (context.mounted) {
                       if (success) {
-                        SweetAlert.show(
-                          context,
-                          title: '¡Registro Exitoso!',
-                          message: 'Salida registrada exitosamente en SQL Server.',
-                          type: SweetAlertType.success,
-                          onConfirm: () {
-                            Navigator.pop(context);
-                          },
-                        );
+                        if (inventoryProvider.lastTransactionOffline) {
+                          SweetAlert.show(
+                            context,
+                            title: '💾 Guardado en Cola',
+                            message: 'Estás sin conexión. La salida se guardó localmente en la cola offline y se sincronizará automáticamente cuando vuelva el internet.',
+                            type: SweetAlertType.warning,
+                            onConfirm: () {
+                              Navigator.pop(context);
+                            },
+                          );
+                        } else {
+                          SweetAlert.show(
+                            context,
+                            title: '¡Registro Exitoso!',
+                            message: 'Salida registrada exitosamente en SQL Server.',
+                            type: SweetAlertType.success,
+                            onConfirm: () {
+                              Navigator.pop(context);
+                            },
+                          );
+                        }
                       } else {
                         SweetAlert.show(
                           context,
@@ -506,6 +545,83 @@ class _AgregarProductoSalidaModalState extends State<_AgregarProductoSalidaModal
   double _price = 0.0;
   int _availableStock = 0;
 
+  void _showQRScanner(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.black,
+      builder: (ctx) => FractionallySizedBox(
+        heightFactor: 0.7,
+        child: Stack(
+          children: [
+            MobileScanner(
+              onDetect: (capture) {
+                final List<Barcode> barcodes = capture.barcodes;
+                if (barcodes.isNotEmpty) {
+                  final String? code = barcodes.first.rawValue;
+                  if (code != null) {
+                    final productProvider = Provider.of<ProductProvider>(context, listen: false);
+                    ProductModel? matchedProduct;
+                    for (var p in productProvider.products) {
+                      if (p.sku == code || p.id == code) {
+                        matchedProduct = p;
+                        break;
+                      }
+                    }
+                    if (matchedProduct != null) {
+                      setState(() {
+                        _selectedProductId = matchedProduct!.id;
+                        _price = matchedProduct.price;
+                        _availableStock = matchedProduct.stock;
+                      });
+                      Navigator.pop(ctx);
+                      SweetAlert.show(
+                        context,
+                        title: 'Código Detectado',
+                        message: 'Producto: ${matchedProduct.name}\nSKU: ${matchedProduct.sku}',
+                        type: SweetAlertType.success,
+                      );
+                    } else {
+                      Navigator.pop(ctx);
+                      SweetAlert.show(
+                        context,
+                        title: 'No Encontrado',
+                        message: 'No se encontró ningún producto con código o SKU: "$code".',
+                        type: SweetAlertType.warning,
+                      );
+                    }
+                  }
+                }
+              },
+            ),
+            Positioned(
+              top: 40,
+              right: 20,
+              child: CircleAvatar(
+                backgroundColor: Colors.white24,
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.pop(ctx),
+                ),
+              ),
+            ),
+            Align(
+              alignment: Alignment.center,
+              child: Container(
+                width: 250,
+                height: 250,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.green, width: 4),
+                  borderRadius: const BorderRadius.all(Radius.circular(12)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final productProvider = Provider.of<ProductProvider>(context);
@@ -528,9 +644,19 @@ class _AgregarProductoSalidaModalState extends State<_AgregarProductoSalidaModal
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Agregar producto (Salida)',
-              style: TextStyle(color: AppColors.getTextColor(context), fontSize: 20, fontWeight: FontWeight.bold),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Agregar producto (Salida)',
+                  style: TextStyle(color: AppColors.getTextColor(context), fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.qr_code_scanner_rounded, color: AppColors.azulPrincipal, size: 28),
+                  onPressed: () => _showQRScanner(context),
+                  tooltip: 'Escanear QR de producto',
+                ),
+              ],
             ),
             const SizedBox(height: 25),
             _buildDropdownField(
@@ -712,6 +838,8 @@ class _AgregarProductoSalidaModalState extends State<_AgregarProductoSalidaModal
                   'name': p.name,
                   'quantity': _quantity,
                   'price': _price,
+                  'currentStock': p.stock,
+                  'minStock': p.minStock,
                 });
                 Navigator.pop(context);
               } else if (_quantity > _availableStock) {

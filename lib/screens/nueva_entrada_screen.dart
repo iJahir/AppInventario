@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
 import 'package:provider/provider.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import '../utils/app_colors.dart';
 import '../utils/routes.dart';
 import '../providers/inventory_provider.dart';
@@ -438,15 +439,27 @@ class _NuevaEntradaScreenState extends State<NuevaEntradaScreen> {
 
                     if (context.mounted) {
                       if (success) {
-                        SweetAlert.show(
-                          context,
-                          title: '¡Registro Exitoso!',
-                          message: 'Entrada registrada exitosamente en SQL Server.',
-                          type: SweetAlertType.success,
-                          onConfirm: () {
-                            Navigator.pop(context);
-                          },
-                        );
+                        if (inventoryProvider.lastTransactionOffline) {
+                          SweetAlert.show(
+                            context,
+                            title: '💾 Guardado en Cola',
+                            message: 'Estás sin conexión. La entrada se guardó localmente en la cola offline y se sincronizará automáticamente cuando vuelva el internet.',
+                            type: SweetAlertType.warning,
+                            onConfirm: () {
+                              Navigator.pop(context);
+                            },
+                          );
+                        } else {
+                          SweetAlert.show(
+                            context,
+                            title: '¡Registro Exitoso!',
+                            message: 'Entrada registrada exitosamente en SQL Server.',
+                            type: SweetAlertType.success,
+                            onConfirm: () {
+                              Navigator.pop(context);
+                            },
+                          );
+                        }
                       } else {
                         SweetAlert.show(
                           context,
@@ -505,6 +518,82 @@ class _AgregarProductoModalState extends State<_AgregarProductoModal> {
   int _quantity = 1;
   double _price = 0.0;
 
+  void _showQRScanner(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.black,
+      builder: (ctx) => FractionallySizedBox(
+        heightFactor: 0.7,
+        child: Stack(
+          children: [
+            MobileScanner(
+              onDetect: (capture) {
+                final List<Barcode> barcodes = capture.barcodes;
+                if (barcodes.isNotEmpty) {
+                  final String? code = barcodes.first.rawValue;
+                  if (code != null) {
+                    final productProvider = Provider.of<ProductProvider>(context, listen: false);
+                    ProductModel? matchedProduct;
+                    for (var p in productProvider.products) {
+                      if (p.sku == code || p.id == code) {
+                        matchedProduct = p;
+                        break;
+                      }
+                    }
+                    if (matchedProduct != null) {
+                      setState(() {
+                        _selectedProductId = matchedProduct!.id;
+                        _price = matchedProduct.price * 0.7;
+                      });
+                      Navigator.pop(ctx);
+                      SweetAlert.show(
+                        context,
+                        title: 'Código Detectado',
+                        message: 'Producto: ${matchedProduct.name}\nSKU: ${matchedProduct.sku}',
+                        type: SweetAlertType.success,
+                      );
+                    } else {
+                      Navigator.pop(ctx);
+                      SweetAlert.show(
+                        context,
+                        title: 'No Encontrado',
+                        message: 'No se encontró ningún producto con código o SKU: "$code".',
+                        type: SweetAlertType.warning,
+                      );
+                    }
+                  }
+                }
+              },
+            ),
+            Positioned(
+              top: 40,
+              right: 20,
+              child: CircleAvatar(
+                backgroundColor: Colors.white24,
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.pop(ctx),
+                ),
+              ),
+            ),
+            Align(
+              alignment: Alignment.center,
+              child: Container(
+                width: 250,
+                height: 250,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.green, width: 4),
+                  borderRadius: const BorderRadius.all(Radius.circular(12)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final productProvider = Provider.of<ProductProvider>(context);
@@ -527,9 +616,19 @@ class _AgregarProductoModalState extends State<_AgregarProductoModal> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Agregar producto',
-              style: TextStyle(color: AppColors.getTextColor(context), fontSize: 20, fontWeight: FontWeight.bold),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Agregar producto',
+                  style: TextStyle(color: AppColors.getTextColor(context), fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.qr_code_scanner_rounded, color: AppColors.moradoPrincipal, size: 28),
+                  onPressed: () => _showQRScanner(context),
+                  tooltip: 'Escanear QR de producto',
+                ),
+              ],
             ),
             const SizedBox(height: 25),
             _buildDropdownField(
@@ -705,6 +804,8 @@ class _AgregarProductoModalState extends State<_AgregarProductoModal> {
                   'name': p.name,
                   'quantity': _quantity,
                   'price': _price,
+                  'currentStock': p.stock,
+                  'minStock': p.minStock,
                 });
                 Navigator.pop(context);
               }

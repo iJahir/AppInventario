@@ -88,4 +88,29 @@ class AuthProvider extends ChangeNotifier {
       return false;
     }
   }
+
+  /// Actualiza el perfil del usuario activo (nombre y foto de perfil en base64)
+  Future<bool> updateProfile(String name, String? base64Image) async {
+    if (_user?.id == null) return false;
+    
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final updatedUser = await _authService.updateProfile(_user!.id!, name, base64Image);
+      _isLoading = false;
+      if (updatedUser != null) {
+        _user = updatedUser;
+        notifyListeners();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      _isLoading = false;
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      notifyListeners();
+      return false;
+    }
+  }
 }

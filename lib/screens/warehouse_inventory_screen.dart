@@ -18,6 +18,8 @@ class _WarehouseInventoryScreenState extends State<WarehouseInventoryScreen> {
   String? _selectedWarehouseId;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+  int _currentPage = 1;
+  final int _itemsPerPage = 10;
 
   @override
   void initState() {
@@ -34,6 +36,7 @@ class _WarehouseInventoryScreenState extends State<WarehouseInventoryScreen> {
     if (inventoryProvider.warehouses.isNotEmpty && mounted) {
       setState(() {
         _selectedWarehouseId = inventoryProvider.warehouses.first['id'].toString();
+        _currentPage = 1;
       });
       inventoryProvider.fetchWarehouseInventory(_selectedWarehouseId!);
     }
@@ -60,6 +63,17 @@ class _WarehouseInventoryScreenState extends State<WarehouseInventoryScreen> {
       final q = _searchQuery.toLowerCase();
       return name.contains(q) || sku.contains(q);
     }).toList();
+
+    // Paginación
+    final int totalProductsCount = filteredInventory.length;
+    final int totalPages = (totalProductsCount / _itemsPerPage).ceil();
+    if (_currentPage > totalPages && totalPages > 0) {
+      _currentPage = totalPages;
+    }
+    final paginatedInventory = filteredInventory.isEmpty ? <ProductModel>[] : filteredInventory.sublist(
+      (_currentPage - 1) * _itemsPerPage,
+      ((_currentPage * _itemsPerPage) > totalProductsCount) ? totalProductsCount : (_currentPage * _itemsPerPage)
+    );
 
     // Calcular KPIs financieras y operativas del almacén seleccionado
     int totalProducts = 0;
@@ -114,13 +128,15 @@ class _WarehouseInventoryScreenState extends State<WarehouseInventoryScreen> {
                                   : ListView.builder(
                                       physics: const BouncingScrollPhysics(),
                                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                                      itemCount: filteredInventory.length,
+                                      itemCount: paginatedInventory.length,
                                       itemBuilder: (context, index) {
-                                        final prod = filteredInventory[index];
+                                        final prod = paginatedInventory[index];
                                         return _buildProductCard(context, prod);
                                       },
                                     ),
                             ),
+                            if (totalPages > 1)
+                              _buildPaginationControls(context, totalPages),
                           ],
                         ),
                 ),
@@ -498,6 +514,49 @@ class _WarehouseInventoryScreenState extends State<WarehouseInventoryScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildPaginationControls(BuildContext context, int totalPages) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20, top: 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          GestureDetector(
+            onTap: _currentPage > 1 ? () => setState(() => _currentPage--) : null,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: _currentPage > 1 ? AppColors.moradoPrincipal : AppColors.getCardColor(context).withOpacity(0.5),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white10),
+              ),
+              child: const Icon(Icons.chevron_left_rounded, color: Colors.white, size: 20),
+            ),
+          ),
+          const SizedBox(width: 25),
+          Text(
+            '$_currentPage / $totalPages',
+            style: TextStyle(color: AppColors.getTextColor(context), fontWeight: FontWeight.bold, fontSize: 13),
+          ),
+          const SizedBox(width: 25),
+          GestureDetector(
+            onTap: _currentPage < totalPages ? () => setState(() => _currentPage++) : null,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: _currentPage < totalPages ? AppColors.moradoPrincipal : AppColors.getCardColor(context).withOpacity(0.5),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white10),
+              ),
+              child: const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 20),
+            ),
+          ),
+        ],
       ),
     );
   }

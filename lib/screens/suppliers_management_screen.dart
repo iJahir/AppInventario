@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:provider/provider.dart';
 import '../providers/inventory_provider.dart';
 import '../utils/app_colors.dart';
+import '../widgets/sweet_alert.dart';
 
 class SuppliersManagementScreen extends StatefulWidget {
   const SuppliersManagementScreen({super.key});
@@ -419,8 +420,11 @@ class _SuppliersManagementScreenState extends State<SuppliersManagementScreen> {
                             final contact = contactController.text.trim();
 
                             if (name.isEmpty) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Por favor ingresa un nombre.')),
+                              SweetAlert.show(
+                                context,
+                                title: 'Campo requerido',
+                                message: 'Por favor ingresa un nombre.',
+                                type: SweetAlertType.warning,
                               );
                               return;
                             }
@@ -436,14 +440,13 @@ class _SuppliersManagementScreenState extends State<SuppliersManagementScreen> {
 
                             if (context.mounted) {
                               Navigator.pop(context);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    success
-                                        ? (isEdit ? 'Proveedor actualizado con éxito.' : 'Proveedor creado con éxito.')
-                                        : (provider.errorMessage ?? 'Error al guardar proveedor.'),
-                                  ),
-                                ),
+                              SweetAlert.show(
+                                context,
+                                title: success ? '¡Guardado con éxito!' : 'Error al guardar',
+                                message: success
+                                    ? (isEdit ? 'Proveedor actualizado con éxito.' : 'Proveedor creado con éxito.')
+                                    : (provider.errorMessage ?? 'Error al guardar proveedor.'),
+                                type: success ? SweetAlertType.success : SweetAlertType.error,
                               );
                             }
                           },
@@ -520,12 +523,11 @@ class _SuppliersManagementScreenState extends State<SuppliersManagementScreen> {
 
                 if (context.mounted) {
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        success ? 'Proveedor eliminado.' : (provider.errorMessage ?? 'Error al eliminar proveedor.'),
-                      ),
-                    ),
+                  SweetAlert.show(
+                    context,
+                    title: success ? '¡Eliminado!' : 'Error',
+                    message: success ? 'Proveedor eliminado exitosamente.' : (provider.errorMessage ?? 'Error al eliminar proveedor.'),
+                    type: success ? SweetAlertType.success : SweetAlertType.error,
                   );
                 }
               },

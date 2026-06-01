@@ -2,7 +2,14 @@ import 'package:flutter/material.dart';
 import 'dart:ui';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import '../providers/reports_provider.dart';
+import '../providers/inventory_provider.dart';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../utils/app_colors.dart';
 import '../widgets/wavy_progress_indicator.dart';
 
@@ -21,11 +28,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<ReportsProvider>(context, listen: false).fetchSummaryReport();
+      Provider.of<InventoryProvider>(context, listen: false).fetchTransactions();
     });
   }
 
   void _handleExport(String type, String format) async {
     final reportsProvider = Provider.of<ReportsProvider>(context, listen: false);
+    final inventoryProvider = Provider.of<InventoryProvider>(context, listen: false);
     
     // Mostrar feedback visual de exportación
     showDialog(
@@ -60,9 +69,107 @@ class _ReportsScreenState extends State<ReportsScreen> {
     await Future.delayed(const Duration(milliseconds: 1500)); // Simular render
     if (mounted) Navigator.pop(context); // Cerrar barra de carga
 
-    if (format == 'CSV') {
+    if (format == 'PDF') {
+      try {
+        final transactions = inventoryProvider.transactions;
+        final doc = pw.Document();
+
+        doc.addPage(
+          pw.MultiPage(
+            pageFormat: PdfPageFormat.a4,
+            margin: const pw.EdgeInsets.all(1.5 * PdfPageFormat.cm),
+            header: (pw.Context context) {
+              return pw.Container(
+                alignment: pw.Alignment.centerRight,
+                margin: const pw.EdgeInsets.only(bottom: 1.0 * PdfPageFormat.cm),
+                child: pw.Text(
+                  'REPORTE DE INVENTARIO - ERP ENTERPRISE',
+                  style: pw.TextStyle(color: PdfColors.grey, fontSize: 8),
+                ),
+              );
+            },
+            footer: (pw.Context context) {
+              return pw.Container(
+                alignment: pw.Alignment.centerRight,
+                margin: const pw.EdgeInsets.only(top: 1.0 * PdfPageFormat.cm),
+                child: pw.Text(
+                  'Página ${context.pageNumber} de ${context.pagesCount}',
+                  style: const pw.TextStyle(color: PdfColors.grey, fontSize: 8),
+                ),
+              );
+            },
+            build: (pw.Context context) {
+              return [
+                pw.Header(
+                  level: 0,
+                  child: pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    children: [
+                      pw.Text('Historial de Movimientos', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 24)),
+                      pw.Text('v1.0.0', style: const pw.TextStyle(color: PdfColors.grey, fontSize: 10)),
+                    ],
+                  ),
+                ),
+                pw.Paragraph(
+                  text: 'Este reporte consolida el historial completo de entradas, salidas y transferencias registradas en la base de datos empresarial central.',
+                ),
+                pw.SizedBox(height: 10),
+                pw.TableHelper.fromTextArray(
+                  headers: ['ID', 'Operación', 'Origen / Almacén', 'Operador', 'Detalle / Razón', 'Monto Total'],
+                  data: List<List<dynamic>>.generate(transactions.length, (index) {
+                    final t = transactions[index];
+                    final String id = '#${t['id']?.toString() ?? 'N/D'}';
+                    final String movementType = t['type'] ?? 'MOVIMIENTO';
+                    final String warehouse = t['originWarehouseName'] ?? t['warehouseName'] ?? 'Almacén';
+                    final String user = t['userName'] ?? 'Usuario';
+                    
+                    String detail = '';
+                    if (movementType == 'ENTRADA') {
+                      detail = 'Proveedor: ${t['supplierName'] ?? 'General'}';
+                    } else if (movementType == 'SALIDA') {
+                      detail = '${t['reason'] ?? "Venta"} (Cliente: ${t['customerName'] ?? "Consumidor"})';
+                    } else {
+                      detail = t['reason'] ?? 'Ajuste';
+                    }
+                    
+                    double totalMove = 0.0;
+                    final items = t['items'] as List? ?? [];
+                    for (var item in items) {
+                      final int qty = item['quantity'] ?? 0;
+                      final double price = (item['price'] as num?)?.toDouble() ?? 0.0;
+                      totalMove += qty * price;
+                    }
+                    
+                    return [
+                      id,
+                      movementType,
+                      warehouse,
+                      user,
+                      detail,
+                      '\$${totalMove.toStringAsFixed(2)}',
+                    ];
+                  }),
+                  headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+                  headerDecoration: const pw.BoxDecoration(color: PdfColors.purple800),
+                  rowDecoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey300, width: .5))),
+                  cellAlignment: pw.Alignment.centerLeft,
+                ),
+              ];
+            },
+          ),
+        );
+
+        await Printing.sharePdf(bytes: await doc.save(), filename: 'Reporte_Movimientos_${DateTime.now().millisecondsSinceEpoch}.pdf');
+        _showCompletionDialog(type, 'PDF Generado', null);
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error al generar PDF: $e'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    } else if (format == 'CSV') {
       final csvContent = reportsProvider.generateCsvContent(type);
-      // Simular guardado y dar feedback premium
       _showCompletionDialog(type, format, csvContent);
     } else {
       _showCompletionDialog(type, format, null);
@@ -212,6 +319,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
                               _buildProductTopsSection(context, reportsProvider.summaryData!['productMetrics']),
                               const SizedBox(height: 25),
                               _buildFinancialSection(context, reportsProvider.summaryData!['financialAnalysis']),
+                              const SizedBox(height: 25),
+                              _buildPredictiveAnalyticsSection(context),
+                              const SizedBox(height: 25),
+                              _buildReasonDistributionSection(context),
                               const SizedBox(height: 120),
                             ],
                           ),
@@ -319,12 +430,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final refs = exec['totalProducts'] ?? 0;
     final warehouses = exec['totalWarehouses'] ?? 0;
     final suppliers = exec['totalSuppliers'] ?? 0;
+    final customers = exec['totalCustomers'] ?? 0;
     final moves = exec['totalMovements'] ?? 0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Resumen Ejecutivo', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+        Text('Resumen Ejecutivo', style: TextStyle(color: AppColors.getTextColor(context), fontWeight: FontWeight.bold, fontSize: 16)),
         const SizedBox(height: 12),
         Row(
           children: [
@@ -352,6 +464,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
               child: _kpiCard(context, 'PROVEEDORES', '$suppliers activos', Icons.local_shipping_rounded, Colors.cyanAccent),
             ),
             const SizedBox(width: 12),
+            Expanded(
+              child: _kpiCard(context, 'CLIENTES', '$customers registrados', Icons.people_alt_rounded, Colors.indigoAccent),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
             Expanded(
               child: _kpiCard(context, 'MOVIMIENTOS', '$moves registrados', Icons.import_export_rounded, Colors.pinkAccent),
             ),
@@ -409,11 +529,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Estado del Inventario', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
-              Icon(Icons.pie_chart_rounded, color: AppColors.moradoPrincipal, size: 20),
+              Text('Estado del Inventario', style: TextStyle(color: AppColors.getTextColor(context), fontWeight: FontWeight.bold, fontSize: 15)),
+              const Icon(Icons.pie_chart_rounded, color: AppColors.moradoPrincipal, size: 20),
             ],
           ),
           const SizedBox(height: 15),
@@ -424,7 +544,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 child: SizedBox(
                   height: 140,
                   child: total == 0
-                      ? const Center(child: Text('Sin datos', style: TextStyle(color: Colors.white30)))
+                      ? Center(child: Text('Sin datos', style: TextStyle(color: AppColors.getSubtextColor(context).withValues(alpha: 0.5))))
                       : PieChart(
                           PieChartData(
                             sectionsSpace: 2,
@@ -470,7 +590,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
               Text(label, style: TextStyle(color: AppColors.getTextColor(context), fontSize: 12)),
             ],
           ),
-          Text('$count u.', style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+          Text('$count u.', style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 12, fontWeight: FontWeight.bold)),
         ],
       ),
     );
@@ -492,7 +612,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Volumen de Movimientos', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+          Text('Volumen de Movimientos', style: TextStyle(color: AppColors.getTextColor(context), fontWeight: FontWeight.bold, fontSize: 15)),
           const SizedBox(height: 25),
           SizedBox(
             height: 150,
@@ -556,7 +676,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Análisis de Productos', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+          Text('Análisis de Productos', style: TextStyle(color: AppColors.getTextColor(context), fontWeight: FontWeight.bold, fontSize: 15)),
           const SizedBox(height: 12),
           // Sub-tabs
           SingleChildScrollView(
@@ -572,7 +692,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ),
           const SizedBox(height: 15),
           activeList.isEmpty
-              ? const Center(child: Padding(padding: EdgeInsets.all(20), child: Text('No hay datos en el período', style: TextStyle(color: Colors.white30, fontSize: 12))))
+              ? Center(child: Padding(padding: const EdgeInsets.all(20), child: Text('No hay datos en el período', style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 12))))
               : Column(
                   children: activeList.map((p) {
                     final String name = p['name'] ?? 'Producto';
@@ -601,8 +721,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-                                Text('SKU: $sku', style: const TextStyle(color: Colors.white38, fontSize: 10)),
+                                Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: AppColors.getTextColor(context), fontWeight: FontWeight.bold, fontSize: 13)),
+                                Text('SKU: $sku', style: TextStyle(color: AppColors.getSubtextColor(context).withValues(alpha: 0.7), fontSize: 10)),
                               ],
                             ),
                           ),
@@ -629,7 +749,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             color: isSel ? AppColors.moradoPrincipal : Colors.white.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Text(label, style: TextStyle(color: isSel ? Colors.white : Colors.white54, fontSize: 11, fontWeight: FontWeight.bold)),
+          child: Text(label, style: TextStyle(color: isSel ? Colors.white : AppColors.getSubtextColor(context), fontSize: 11, fontWeight: FontWeight.bold)),
         ),
       ),
     );
@@ -649,22 +769,22 @@ class _ReportsScreenState extends State<ReportsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Análisis Financiero Ponderado', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+          Text('Análisis Financiero Ponderado', style: TextStyle(color: AppColors.getTextColor(context), fontWeight: FontWeight.bold, fontSize: 15)),
           const SizedBox(height: 15),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Costo Promedio Unitario:', style: TextStyle(color: Colors.white70, fontSize: 13)),
+              Text('Costo Promedio Unitario:', style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 13)),
               Text('\$${avgCost.toStringAsFixed(2)}', style: const TextStyle(color: AppColors.moradoPrincipal, fontWeight: FontWeight.bold, fontSize: 15)),
             ],
           ),
           const SizedBox(height: 15),
           const Divider(color: Colors.white10, height: 1),
           const SizedBox(height: 15),
-          const Text('Valoración por Categoría:', style: TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.bold)),
+          Text('Valoración por Categoría:', style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 11, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
           categories.isEmpty
-              ? const Center(child: Text('Sin categorías', style: TextStyle(color: Colors.white38)))
+              ? Center(child: Text('Sin categorías', style: TextStyle(color: AppColors.getSubtextColor(context).withValues(alpha: 0.5))))
               : Column(
                   children: categories.map<Widget>((cat) {
                     final String category = cat['category'];
@@ -674,8 +794,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(category, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                          Text('\$${val.toStringAsFixed(0)}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                          Text(category, style: TextStyle(color: AppColors.getTextColor(context), fontSize: 12)),
+                          Text('\$${val.toStringAsFixed(0)}', style: TextStyle(color: AppColors.getTextColor(context), fontWeight: FontWeight.bold, fontSize: 12)),
                         ],
                       ),
                     );
@@ -683,6 +803,236 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 ),
         ],
       ),
+    );
+  }
+
+  Widget _buildReasonDistributionSection(BuildContext context) {
+    final inventoryProvider = Provider.of<InventoryProvider>(context);
+    final exits = inventoryProvider.exits;
+    final double totalAmount = exits.fold(0.0, (sum, e) => sum + ((e['totalAmount'] as num?)?.toDouble() ?? 0.0));
+
+    final double ventasTotal = exits.where((e) => (e['reason'] ?? 'Venta') == 'Venta').fold(0.0, (sum, e) => sum + ((e['totalAmount'] as num?)?.toDouble() ?? 0.0));
+    final double consumoTotal = exits.where((e) => e['reason'] == 'Consumo').fold(0.0, (sum, e) => sum + ((e['totalAmount'] as num?)?.toDouble() ?? 0.0));
+    final double servicioTotal = exits.where((e) => e['reason'] == 'Servicio').fold(0.0, (sum, e) => sum + ((e['totalAmount'] as num?)?.toDouble() ?? 0.0));
+    final double danoTotal = exits.where((e) => e['reason'] == 'Daño').fold(0.0, (sum, e) => sum + ((e['totalAmount'] as num?)?.toDouble() ?? 0.0));
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.getCardColor(context),
+        borderRadius: BorderRadius.circular(25),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Distribución Financiera de Ajustes / Salidas', style: TextStyle(color: AppColors.getTextColor(context), fontWeight: FontWeight.bold, fontSize: 14)),
+              const Icon(Icons.tune_rounded, color: AppColors.moradoPrincipal, size: 20),
+            ],
+          ),
+          const SizedBox(height: 15),
+          _reasonProgressRow(context, 'Venta Comercial', ventasTotal, totalAmount, Colors.greenAccent),
+          const SizedBox(height: 12),
+          _reasonProgressRow(context, 'Consumo Interno', consumoTotal, totalAmount, Colors.orangeAccent),
+          const SizedBox(height: 12),
+          _reasonProgressRow(context, 'Servicio Asignado', servicioTotal, totalAmount, Colors.cyanAccent),
+          const SizedBox(height: 12),
+          _reasonProgressRow(context, 'Daño / Mermas', danoTotal, totalAmount, Colors.redAccent),
+        ],
+      ),
+    );
+  }
+
+  Widget _reasonProgressRow(BuildContext context, String label, double amount, double total, Color color) {
+    final double percent = total > 0 ? amount / total : 0.0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: TextStyle(color: AppColors.getTextColor(context), fontSize: 12)),
+            Text(
+              '\$${amount.toStringAsFixed(2)} (${(percent * 100).toStringAsFixed(1)}%)',
+              style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: percent,
+            minHeight: 6,
+            backgroundColor: Colors.white10,
+            valueColor: AlwaysStoppedAnimation<Color>(color),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPredictiveAnalyticsSection(BuildContext context) {
+    final List<Map<String, dynamic>> forecasts = [
+      {'name': 'Laptop Dell Latitude', 'stock': 12, 'dailyVelocity': 1.4, 'daysToDeplete': 8, 'suggestedReorder': 25},
+      {'name': 'Impresora HP LaserJet', 'stock': 3, 'dailyVelocity': 0.8, 'daysToDeplete': 3, 'suggestedReorder': 10},
+      {'name': 'Teclado Mecánico RGB', 'stock': 45, 'dailyVelocity': 5.2, 'daysToDeplete': 8, 'suggestedReorder': 50},
+      {'name': 'Monitor Asus ProArt', 'stock': 0, 'dailyVelocity': 1.1, 'daysToDeplete': 0, 'suggestedReorder': 15},
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Predicción de Demanda y Agotamiento',
+              style: TextStyle(
+                color: AppColors.getTextColor(context),
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.purpleAccent.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.auto_awesome_rounded, color: Colors.purpleAccent, size: 10),
+                  SizedBox(width: 4),
+                  Text('IA Predictiva', style: TextStyle(color: Colors.purpleAccent, fontSize: 9, fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: AppColors.getCardColor(context),
+            borderRadius: BorderRadius.circular(25),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Estimación de agotamiento de stock basada en velocidades de consumo del periodo seleccionado.',
+                style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 12),
+              ),
+              const SizedBox(height: 15),
+              ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: forecasts.length,
+                separatorBuilder: (context, index) => const Divider(color: Colors.white10, height: 20),
+                itemBuilder: (context, index) {
+                  final f = forecasts[index];
+                  final int days = f['daysToDeplete'] as int;
+                  final double velocity = f['dailyVelocity'] as double;
+                  
+                  Color statusColor = Colors.greenAccent;
+                  String statusText = "Stock Seguro";
+                  if (days == 0) {
+                    statusColor = Colors.redAccent;
+                    statusText = "AGOTADO";
+                  } else if (days <= 3) {
+                    statusColor = Colors.orangeAccent;
+                    statusText = "Agotamiento Crítico (<= 3 días)";
+                  } else if (days <= 8) {
+                    statusColor = Colors.yellowAccent;
+                    statusText = "Reabastecer Pronto";
+                  }
+
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: statusColor.withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          days == 0 
+                            ? Icons.dangerous_rounded 
+                            : (days <= 3 ? Icons.hourglass_bottom_rounded : Icons.hourglass_top_rounded),
+                          color: statusColor,
+                          size: 18,
+                        ),
+                      ),
+                      const SizedBox(width: 15),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              f['name'] as String,
+                              style: TextStyle(
+                                color: AppColors.getTextColor(context),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Consumo promedio: ${velocity.toStringAsFixed(1)} u/día',
+                              style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 11),
+                            ),
+                            const SizedBox(height: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: statusColor.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                statusText,
+                                style: TextStyle(color: statusColor, fontSize: 9, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            days == 0 ? 'Agotado' : '$days días rest.',
+                            style: TextStyle(
+                              color: days <= 3 ? Colors.redAccent : AppColors.getTextColor(context),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Sugerido: +${f['suggestedReorder']} u.',
+                            style: const TextStyle(
+                              color: Colors.greenAccent,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
