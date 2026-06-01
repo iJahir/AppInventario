@@ -371,7 +371,10 @@ class _NuevaEntradaScreenState extends State<NuevaEntradaScreen> {
 
   Widget _buildSummary(BuildContext context) {
     double subtotal = _productos.fold(0.0, (sum, item) => sum + (item['quantity'] * item['price']));
-    double taxes = subtotal * 0.13; // 13% IVA según BD
+    double taxes = _productos.fold(0.0, (sum, item) {
+      double taxPercentage = (item['taxPercentage'] as num?)?.toDouble() ?? 0.0;
+      return sum + (item['quantity'] * item['price'] * (taxPercentage / 100.0));
+    });
     double total = subtotal + taxes;
 
     return Container(
@@ -387,7 +390,8 @@ class _NuevaEntradaScreenState extends State<NuevaEntradaScreen> {
           _summaryRow(context, 'Total unidades:', '${_productos.fold(0, (sum, item) => sum + (item['quantity'] as int))}'),
           Divider(color: AppColors.getTextColor(context).withValues(alpha: 0.1), height: 20),
           _summaryRow(context, 'Subtotal:', '\$${subtotal.toStringAsFixed(2)}'),
-          _summaryRow(context, 'Impuestos (13%):', '\$${taxes.toStringAsFixed(2)}'),
+          if (taxes > 0)
+            _summaryRow(context, 'Impuestos:', '\$${taxes.toStringAsFixed(2)}'),
           const SizedBox(height: 10),
           _summaryRow(context, 'Total a pagar:', '\$${total.toStringAsFixed(2)}', isTotal: true),
         ],
@@ -874,6 +878,7 @@ class _AgregarProductoModalState extends State<_AgregarProductoModal> {
                   'price': _price,
                   'currentStock': p.stock,
                   'minStock': p.minStock,
+                  'taxPercentage': p.taxPercentage ?? 0.0,
                 });
                 Navigator.pop(context);
               }

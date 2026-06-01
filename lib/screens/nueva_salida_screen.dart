@@ -393,8 +393,12 @@ class _NuevaSalidaScreenState extends State<NuevaSalidaScreen> {
 
   Widget _buildSummary(BuildContext context) {
     double subtotal = _productos.fold(0.0, (sum, item) => sum + (item['quantity'] * item['price']));
-    double discount = subtotal * 0.05; // 5% Descuento estándar
-    double total = subtotal - discount;
+    double discount = 0.0; // Descuento desactivado por defecto
+    double taxes = _productos.fold(0.0, (sum, item) {
+      double taxPercentage = (item['taxPercentage'] as num?)?.toDouble() ?? 0.0;
+      return sum + (item['quantity'] * item['price'] * (taxPercentage / 100.0));
+    });
+    double total = subtotal + taxes - discount;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -409,7 +413,10 @@ class _NuevaSalidaScreenState extends State<NuevaSalidaScreen> {
           _summaryRow(context, 'Total unidades:', '${_productos.fold(0, (sum, item) => sum + (item['quantity'] as int))}'),
           Divider(color: AppColors.getTextColor(context).withValues(alpha: 0.1), height: 20),
           _summaryRow(context, 'Subtotal:', '\$${subtotal.toStringAsFixed(2)}'),
-          _summaryRow(context, 'Descuento (5%):', '-\$${discount.toStringAsFixed(2)}'),
+          if (taxes > 0)
+            _summaryRow(context, 'Impuestos:', '\$${taxes.toStringAsFixed(2)}'),
+          if (discount > 0)
+            _summaryRow(context, 'Descuento:', '-\$${discount.toStringAsFixed(2)}'),
           const SizedBox(height: 10),
           _summaryRow(context, 'Total a pagar:', '\$${total.toStringAsFixed(2)}', isTotal: true),
         ],
@@ -539,11 +546,21 @@ class _NuevaSalidaScreenState extends State<NuevaSalidaScreen> {
   }
 
   void _showAddProductModal({Map<String, dynamic>? editProduct}) {
+    if (_selectedWarehouseId == null) {
+      SweetAlert.show(
+        context,
+        title: 'Selecciona Almacén',
+        message: 'Por favor selecciona un almacén primero para verificar la disponibilidad de lotes PEPS.',
+        type: SweetAlertType.warning,
+      );
+      return;
+    }
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => _AgregarProductoSalidaModal(
+        warehouseId: _selectedWarehouseId!,
         editProduct: editProduct,
         onAdd: (product) {
           setState(() {
@@ -563,9 +580,10 @@ class _NuevaSalidaScreenState extends State<NuevaSalidaScreen> {
 }
 
 class _AgregarProductoSalidaModal extends StatefulWidget {
+  final String warehouseId;
   final Map<String, dynamic>? editProduct;
   final Function(Map<String, dynamic>) onAdd;
-  const _AgregarProductoSalidaModal({this.editProduct, required this.onAdd});
+  const _AgregarProductoSalidaModal({required this.warehouseId, this.editProduct, required this.onAdd});
 
   @override
   State<_AgregarProductoSalidaModal> createState() => _AgregarProductoSalidaModalState();
@@ -576,6 +594,8 @@ class _AgregarProductoSalidaModalState extends State<_AgregarProductoSalidaModal
   int _quantity = 1;
   double _price = 0.0;
   int _availableStock = 0;
+  Map<String, dynamic>? _pepsPreview;
+  bool _loadingPepsPreview = false;
 
   @override
   void initState() {
@@ -585,6 +605,31 @@ class _AgregarProductoSalidaModalState extends State<_AgregarProductoSalidaModal
       _quantity = (widget.editProduct!['quantity'] as num?)?.toInt() ?? 1;
       _price = (widget.editProduct!['price'] as num?)?.toDouble() ?? 0.0;
       _availableStock = (widget.editProduct!['currentStock'] as num?)?.toInt() ?? 0;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _updatePepsPreview());
+    }
+  }
+
+  Future<void> _updatePepsPreview() async {
+    if (_selectedProductId == null || _quantity <= 0) {
+      setState(() {
+        _pepsPreview = null;
+      });
+      return;
+    }
+    setState(() {
+      _loadingPepsPreview = true;
+    });
+    try {
+      final productProvider = Provider.of<ProductProvider>(context, listen: false);
+      final preview = await productProvider.fetchPepsPreview(_selectedProductId!, _quantity, widget.warehouseId);
+      setState(() {
+        _pepsPreview = preview;
+        _loadingPepsPreview = false;
+      });
+    } catch (_) {
+      setState(() {
+        _loadingPepsPreview = false;
+      });
     }
   }
 
@@ -741,6 +786,7 @@ class _AgregarProductoSalidaModalState extends State<_AgregarProductoSalidaModal
                   _price = prod.price;
                   _availableStock = prod.stock;
                 });
+                _updatePepsPreview();
               },
             ),
             const SizedBox(height: 20),
@@ -756,6 +802,59 @@ class _AgregarProductoSalidaModalState extends State<_AgregarProductoSalidaModal
               "Stock disponible: $_availableStock",
               style: TextStyle(color: _quantity > _availableStock ? Colors.redAccent : Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold),
             ),
+            
+            // PEPS LOTS BREAKDOWN LIVE PREVIEW
+            if (_loadingPepsPreview)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 15),
+                child: Center(
+                  child: SizedBox(
+                    width: 18, height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.azulPrincipal),
+                  ),
+                ),
+              )
+            else if (_pepsPreview != null && _pepsPreview!['breakdown'] != null && (_pepsPreview!['breakdown'] as List).isNotEmpty) ...[
+              const SizedBox(height: 15),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.azulPrincipal.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.azulPrincipal.withValues(alpha: 0.15)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.layers_rounded, color: AppColors.azulPrincipal, size: 14),
+                        const SizedBox(width: 8),
+                        Text(
+                          'PEPS - Distribución por Lotes Estimada:',
+                          style: TextStyle(color: AppColors.getTextColor(context), fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    ...(_pepsPreview!['breakdown'] as List).map((b) {
+                      final lotId = b['lotId'] ?? '?';
+                      final qty = b['quantity'] ?? 0;
+                      final cost = b['unitCost'] ?? 0.0;
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Text(
+                          '• Lote #$lotId: $qty un. × \$$cost',
+                          style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 11),
+                        ),
+                      );
+                    }).toList(),
+                  ],
+                ),
+              ),
+            ],
+
             const SizedBox(height: 30),
             _buildSubtotal(context),
             const SizedBox(height: 30),
@@ -819,12 +918,20 @@ class _AgregarProductoSalidaModalState extends State<_AgregarProductoSalidaModal
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               IconButton(
-                onPressed: () => setState(() { if(_quantity > 1) _quantity--; }),
+                onPressed: () => setState(() { 
+                  if(_quantity > 1) {
+                    _quantity--; 
+                    _updatePepsPreview();
+                  }
+                }),
                 icon: Icon(Icons.remove, color: AppColors.getTextColor(context), size: 20),
               ),
               Text('$_quantity', style: TextStyle(color: AppColors.getTextColor(context), fontSize: 16, fontWeight: FontWeight.bold)),
               IconButton(
-                onPressed: () => setState(() => _quantity++),
+                onPressed: () => setState(() {
+                  _quantity++;
+                  _updatePepsPreview();
+                }),
                 icon: Icon(Icons.add, color: AppColors.getTextColor(context), size: 20),
               ),
             ],
@@ -909,6 +1016,7 @@ class _AgregarProductoSalidaModalState extends State<_AgregarProductoSalidaModal
                   'price': _price,
                   'currentStock': p.stock,
                   'minStock': p.minStock,
+                  'taxPercentage': p.taxPercentage ?? 0.0,
                 });
                 Navigator.pop(context);
               } else if (_quantity > _availableStock) {
