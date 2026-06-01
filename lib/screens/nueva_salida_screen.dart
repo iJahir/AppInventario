@@ -359,6 +359,28 @@ class _NuevaSalidaScreenState extends State<NuevaSalidaScreen> {
               children: [
                 Text(product['name'], style: TextStyle(color: AppColors.getTextColor(context), fontWeight: FontWeight.bold)),
                 Text("Cant: ${product['quantity']} | Unit: \$${product['price']}", style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 12)),
+                if (product['pepsBreakdown'] != null && (product['pepsBreakdown'] as List).isNotEmpty) ...[
+                  const SizedBox(height: 5),
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 2,
+                    children: (product['pepsBreakdown'] as List).map<Widget>((b) {
+                      final lotId = b['lotId'] ?? '?';
+                      final qty = b['quantity'] ?? 0;
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.azulPrincipal.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          'Lote #$lotId ($qty un.)',
+                          style: const TextStyle(color: AppColors.azulPrincipal, fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
               ],
             ),
           ),
