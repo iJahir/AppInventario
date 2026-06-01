@@ -848,6 +848,26 @@ app.post('/api/products', async (req, res) => {
             .query(query);
 
         const p = result.recordset[0];
+        
+        // Si el producto se crea con stock inicial > 0, generar un lote inicial automático
+        const newProductStock = parseInt(p.stock);
+        if (newProductStock > 0) {
+            const whRes = await pool.request().query("SELECT TOP 1 id FROM warehouses ORDER BY id ASC");
+            const firstWhId = whRes.recordset.length > 0 ? whRes.recordset[0].id : 1;
+            const newProductPurchasePrice = p.purchase_price != null ? parseFloat(p.purchase_price) : 0.0;
+            
+            const initialLotQuery = `
+                INSERT INTO product_lots (product_id, transaction_id, warehouse_id, initial_quantity, available_quantity, unit_cost)
+                VALUES (@productId, NULL, @warehouseId, @quantity, @quantity, @unitCost)
+            `;
+            await pool.request()
+                .input('productId', sql.BigInt, p.id)
+                .input('warehouseId', sql.BigInt, firstWhId)
+                .input('quantity', sql.Int, newProductStock)
+                .input('unitCost', sql.Decimal(18, 2), newProductPurchasePrice)
+                .query(initialLotQuery);
+        }
+
         res.json({
             id: p.id.toString(),
             sku: p.sku,

@@ -47,12 +47,12 @@ class _EntradaScreenState extends State<EntradaScreen> {
           Positioned(
             top: -100,
             right: -50,
-            child: _buildBlurOrb(AppColors.moradoPrincipal.withValues(alpha: isDark ? 0.15 : 0.05), 300),
+            child: _buildBlurOrb(AppColors.moradoPrincipal.withOpacity(isDark ? 0.15 : 0.05), 300),
           ),
           Positioned(
             bottom: 100,
             left: -50,
-            child: _buildBlurOrb(AppColors.azulPrincipal.withValues(alpha: isDark ? 0.1 : 0.05), 250),
+            child: _buildBlurOrb(AppColors.azulPrincipal.withOpacity(isDark ? 0.1 : 0.05), 250),
           ),
           
           SafeArea(
@@ -144,7 +144,7 @@ class _EntradaScreenState extends State<EntradaScreen> {
         decoration: BoxDecoration(
           color: AppColors.getCardColor(context), 
           shape: BoxShape.circle, 
-          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+          border: Border.all(color: Colors.white.withOpacity(0.1)),
         ),
         child: Icon(icon, color: iconColor ?? AppColors.getTextColor(context), size: 22),
       ),
@@ -185,8 +185,8 @@ class _EntradaScreenState extends State<EntradaScreen> {
       decoration: BoxDecoration(
         color: AppColors.getCardColor(context),
         borderRadius: BorderRadius.circular(25),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 15)],
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 15)],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -240,7 +240,7 @@ class _EntradaScreenState extends State<EntradaScreen> {
           height: 60 * heightFactor,
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [AppColors.moradoPrincipal, AppColors.azulPrincipal.withValues(alpha: 0.5)],
+              colors: [AppColors.moradoPrincipal, AppColors.azulPrincipal.withOpacity(0.5)],
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
             ),
@@ -270,7 +270,7 @@ class _EntradaScreenState extends State<EntradaScreen> {
         decoration: BoxDecoration(
           gradient: const LinearGradient(colors: [AppColors.moradoPrincipal, Color(0xFF6A11CB)]),
           borderRadius: BorderRadius.circular(15),
-          boxShadow: [BoxShadow(color: AppColors.moradoPrincipal.withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 4))],
+          boxShadow: [BoxShadow(color: AppColors.moradoPrincipal.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))],
         ),
         child: const Center(
           child: Row(
@@ -295,7 +295,7 @@ class _EntradaScreenState extends State<EntradaScreen> {
             decoration: BoxDecoration(
               color: AppColors.getCardColor(context), 
               borderRadius: BorderRadius.circular(15), 
-              border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+              border: Border.all(color: Colors.white.withOpacity(0.05)),
             ),
             child: Row(
               children: [
@@ -344,7 +344,7 @@ class _EntradaScreenState extends State<EntradaScreen> {
             decoration: BoxDecoration(
               color: AppColors.getCardColor(context), 
               borderRadius: BorderRadius.circular(15), 
-              border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+              border: Border.all(color: Colors.white.withOpacity(0.05)),
             ),
             child: Icon(Icons.tune_rounded, color: AppColors.getSubtextColor(context), size: 20),
           ),
@@ -462,13 +462,13 @@ class _EntradaScreenState extends State<EntradaScreen> {
                 child: Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: _currentPage > 1 ? AppColors.getCardColor(context) : AppColors.getCardColor(context).withValues(alpha: 0.5),
+                    color: _currentPage > 1 ? AppColors.getCardColor(context) : AppColors.getCardColor(context).withOpacity(0.5),
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                    border: Border.all(color: Colors.white.withOpacity(0.05)),
                   ),
                   child: Icon(
                     Icons.chevron_left_rounded,
-                    color: _currentPage > 1 ? AppColors.getTextColor(context) : AppColors.getSubtextColor(context).withValues(alpha: 0.3),
+                    color: _currentPage > 1 ? AppColors.getTextColor(context) : AppColors.getSubtextColor(context).withOpacity(0.3),
                   ),
                 ),
               ),
@@ -498,8 +498,8 @@ class _EntradaScreenState extends State<EntradaScreen> {
                     decoration: BoxDecoration(
                       color: isSelected ? AppColors.moradoPrincipal : AppColors.getCardColor(context),
                       shape: BoxShape.circle,
-                      border: Border.all(color: isSelected ? AppColors.moradoPrincipal : Colors.white.withValues(alpha: 0.05)),
-                      boxShadow: isSelected ? [BoxShadow(color: AppColors.moradoPrincipal.withValues(alpha: 0.3), blurRadius: 8)] : null,
+                      border: Border.all(color: isSelected ? AppColors.moradoPrincipal : Colors.white.withOpacity(0.05)),
+                      boxShadow: isSelected ? [BoxShadow(color: AppColors.moradoPrincipal.withOpacity(0.3), blurRadius: 8)] : null,
                     ),
                     alignment: Alignment.center,
                     child: Text(
@@ -521,13 +521,13 @@ class _EntradaScreenState extends State<EntradaScreen> {
                 child: Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: _currentPage < totalPages ? AppColors.getCardColor(context) : AppColors.getCardColor(context).withValues(alpha: 0.5),
+                    color: _currentPage < totalPages ? AppColors.getCardColor(context) : AppColors.getCardColor(context).withOpacity(0.5),
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                    border: Border.all(color: Colors.white.withOpacity(0.05)),
                   ),
                   child: Icon(
                     Icons.chevron_right_rounded,
-                    color: _currentPage < totalPages ? AppColors.getTextColor(context) : AppColors.getSubtextColor(context).withValues(alpha: 0.3),
+                    color: _currentPage < totalPages ? AppColors.getTextColor(context) : AppColors.getSubtextColor(context).withOpacity(0.3),
                   ),
                 ),
               ),
@@ -545,13 +545,13 @@ class _EntradaScreenState extends State<EntradaScreen> {
       decoration: BoxDecoration(
         color: AppColors.getCardColor(context), 
         borderRadius: BorderRadius.circular(22), 
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), shape: BoxShape.circle),
+            decoration: BoxDecoration(color: statusColor.withOpacity(0.1), shape: BoxShape.circle),
             child: Icon(Icons.download_rounded, color: statusColor, size: 20),
           ),
           const SizedBox(width: 15),
@@ -561,7 +561,7 @@ class _EntradaScreenState extends State<EntradaScreen> {
               children: [
                 Text(name, style: TextStyle(color: AppColors.getTextColor(context), fontWeight: FontWeight.bold, fontSize: 14), overflow: TextOverflow.ellipsis),
                 Text(prov, style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 11)),
-                Text(date, style: TextStyle(color: AppColors.getSubtextColor(context).withValues(alpha: 0.5), fontSize: 10)),
+                Text(date, style: TextStyle(color: AppColors.getSubtextColor(context).withOpacity(0.5), fontSize: 10)),
               ],
             ),
           ),
@@ -591,7 +591,7 @@ class _EntradaScreenState extends State<EntradaScreen> {
         decoration: BoxDecoration(
           color: AppColors.getCardColor(context), 
           borderRadius: BorderRadius.circular(20), 
-          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+          border: Border.all(color: Colors.white.withOpacity(0.05)),
         ),
         child: Row(
           children: [
@@ -628,9 +628,9 @@ class _EntradaScreenState extends State<EntradaScreen> {
       margin: const EdgeInsets.only(top: 15),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.getCardColor(context).withValues(alpha: 0.5),
+        color: AppColors.getCardColor(context).withOpacity(0.5),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.03)),
+        border: Border.all(color: Colors.white.withOpacity(0.03)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -660,9 +660,9 @@ class _EntradaScreenState extends State<EntradaScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.getBackgroundColor(context).withValues(alpha: 0.4),
+        color: AppColors.getBackgroundColor(context).withOpacity(0.4),
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.03)),
+        border: Border.all(color: Colors.white.withOpacity(0.03)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -684,10 +684,10 @@ class _EntradaScreenState extends State<EntradaScreen> {
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 30),
       height: 75,
       decoration: BoxDecoration(
-        color: AppColors.getCardColor(context).withValues(alpha: 0.9),
+        color: AppColors.getCardColor(context).withOpacity(0.9),
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.1), blurRadius: 20, offset: const Offset(0, 10))],
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(isDark ? 0.4 : 0.1), blurRadius: 20, offset: const Offset(0, 10))],
       ),
       child: Stack(
         clipBehavior: Clip.none,
@@ -701,8 +701,8 @@ class _EntradaScreenState extends State<EntradaScreen> {
               width: 56, height: 52,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: AppColors.moradoPrincipal.withValues(alpha: 0.5), width: 1.5),
-                boxShadow: [BoxShadow(color: AppColors.moradoPrincipal.withValues(alpha: 0.15), blurRadius: 10, spreadRadius: 1)],
+                border: Border.all(color: AppColors.moradoPrincipal.withOpacity(0.5), width: 1.5),
+                boxShadow: [BoxShadow(color: AppColors.moradoPrincipal.withOpacity(0.15), blurRadius: 10, spreadRadius: 1)],
               ),
             ),
           ),
@@ -778,9 +778,9 @@ class _EntradaScreenState extends State<EntradaScreen> {
           filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
           child: Container(
             decoration: BoxDecoration(
-              color: AppColors.getCardColor(context).withValues(alpha: 0.95),
+              color: AppColors.getCardColor(context).withOpacity(0.95),
               borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+              border: Border.all(color: Colors.white.withOpacity(0.08)),
             ),
             padding: const EdgeInsets.all(24),
             child: Column(
@@ -862,7 +862,7 @@ class _EntradaScreenState extends State<EntradaScreen> {
                       borderRadius: BorderRadius.circular(15),
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.moradoPrincipal.withValues(alpha: 0.3),
+                          color: AppColors.moradoPrincipal.withOpacity(0.3),
                           blurRadius: 10,
                         ),
                       ],
@@ -895,9 +895,9 @@ class _EntradaScreenState extends State<EntradaScreen> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: Theme.of(context).brightness == Brightness.dark ? 0.02 : 0.04),
+        color: Colors.white.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.02 : 0.04),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -918,9 +918,9 @@ class _EntradaScreenState extends State<EntradaScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: isDark ? 0.01 : 0.02),
+        color: Colors.white.withOpacity(isDark ? 0.01 : 0.02),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.03)),
+        border: Border.all(color: Colors.white.withOpacity(0.03)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -1077,9 +1077,9 @@ class _TransactionDetailSheetState extends State<_TransactionDetailSheet> {
       child: Container(
         constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.88),
         decoration: BoxDecoration(
-          color: AppColors.getCardColor(context).withValues(alpha: 0.95),
+          color: AppColors.getCardColor(context).withOpacity(0.95),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          border: Border.all(color: Colors.white.withOpacity(0.08)),
         ),
         padding: const EdgeInsets.all(24),
         child: SingleChildScrollView(
@@ -1116,7 +1116,7 @@ class _TransactionDetailSheetState extends State<_TransactionDetailSheet> {
                       return Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                         decoration: BoxDecoration(
-                          color: reasonColor.withValues(alpha: 0.1),
+                          color: reasonColor.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(
@@ -1186,16 +1186,16 @@ class _TransactionDetailSheetState extends State<_TransactionDetailSheet> {
                     margin: const EdgeInsets.only(bottom: 10),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: isDark ? 0.02 : 0.04),
+                      color: Colors.white.withOpacity(isDark ? 0.02 : 0.04),
                       borderRadius: BorderRadius.circular(15),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.03)),
+                      border: Border.all(color: Colors.white.withOpacity(0.03)),
                     ),
                     child: Row(
                       children: [
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: AppColors.moradoPrincipal.withValues(alpha: 0.1),
+                            color: AppColors.moradoPrincipal.withOpacity(0.1),
                             shape: BoxShape.circle,
                           ),
                           child: const Icon(Icons.inventory_2_rounded, color: AppColors.moradoPrincipal, size: 16),
@@ -1277,9 +1277,9 @@ class _TransactionDetailSheetState extends State<_TransactionDetailSheet> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: isDark ? 0.02 : 0.04),
+                    color: Colors.white.withOpacity(isDark ? 0.02 : 0.04),
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                    border: Border.all(color: Colors.white.withOpacity(0.05)),
                   ),
                   child: Row(
                     children: [
@@ -1319,19 +1319,19 @@ class _TransactionDetailSheetState extends State<_TransactionDetailSheet> {
                       gradient: LinearGradient(
                         colors: widget.isEntrada
                           ? [
-                              Colors.green.withValues(alpha: isDark ? 0.08 : 0.04),
-                              Colors.teal.withValues(alpha: isDark ? 0.06 : 0.03),
+                              Colors.green.withOpacity(isDark ? 0.08 : 0.04),
+                              Colors.teal.withOpacity(isDark ? 0.06 : 0.03),
                             ]
                           : [
-                              const Color(0xFF6A11CB).withValues(alpha: isDark ? 0.08 : 0.04),
-                              const Color(0xFF2575FC).withValues(alpha: isDark ? 0.06 : 0.03),
+                              const Color(0xFF6A11CB).withOpacity(isDark ? 0.08 : 0.04),
+                              const Color(0xFF2575FC).withOpacity(isDark ? 0.06 : 0.03),
                             ],
                       ),
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
                         color: widget.isEntrada 
-                          ? Colors.green.withValues(alpha: 0.1) 
-                          : const Color(0xFF6A11CB).withValues(alpha: 0.1),
+                          ? Colors.green.withOpacity(0.1) 
+                          : const Color(0xFF6A11CB).withOpacity(0.1),
                       ),
                     ),
                     child: Column(
@@ -1346,8 +1346,8 @@ class _TransactionDetailSheetState extends State<_TransactionDetailSheet> {
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                   decoration: BoxDecoration(
                                     color: widget.isEntrada 
-                                      ? Colors.green.withValues(alpha: 0.15) 
-                                      : const Color(0xFF6A11CB).withValues(alpha: 0.15),
+                                      ? Colors.green.withOpacity(0.15) 
+                                      : const Color(0xFF6A11CB).withOpacity(0.15),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: Text(
@@ -1418,7 +1418,7 @@ class _TransactionDetailSheetState extends State<_TransactionDetailSheet> {
                       borderRadius: BorderRadius.circular(15),
                       boxShadow: [
                         BoxShadow(
-                          color: (widget.isEntrada ? Colors.green : Colors.orange).withValues(alpha: 0.3),
+                          color: (widget.isEntrada ? Colors.green : Colors.orange).withOpacity(0.3),
                           blurRadius: 10,
                         ),
                       ],

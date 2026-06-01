@@ -74,7 +74,7 @@ class _AllEntriesScreenState extends State<AllEntriesScreen> {
             right: -50,
             child: Container(
               width: 300, height: 300,
-              decoration: BoxDecoration(color: AppColors.azulPrincipal.withValues(alpha: isDark ? 0.15 : 0.05), shape: BoxShape.circle),
+              decoration: BoxDecoration(color: AppColors.azulPrincipal.withOpacity(isDark ? 0.15 : 0.05), shape: BoxShape.circle),
               child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 80, sigmaY: 80), child: Container(color: Colors.transparent)),
             ),
           ),
@@ -155,7 +155,7 @@ class _AllEntriesScreenState extends State<AllEntriesScreen> {
               decoration: BoxDecoration(
                 color: AppColors.getCardColor(context), 
                 shape: BoxShape.circle, 
-                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                border: Border.all(color: Colors.white.withOpacity(0.1)),
               ),
               child: Icon(Icons.arrow_back_rounded, color: AppColors.getTextColor(context), size: 22),
             ),
@@ -187,7 +187,7 @@ class _AllEntriesScreenState extends State<AllEntriesScreen> {
               decoration: BoxDecoration(
                 color: AppColors.getCardColor(context), 
                 borderRadius: BorderRadius.circular(15), 
-                border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                border: Border.all(color: Colors.white.withOpacity(0.05)),
               ),
               child: Row(
                 children: [
@@ -236,7 +236,7 @@ class _AllEntriesScreenState extends State<AllEntriesScreen> {
               decoration: BoxDecoration(
                 color: AppColors.getCardColor(context), 
                 borderRadius: BorderRadius.circular(15), 
-                border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                border: Border.all(color: Colors.white.withOpacity(0.05)),
               ),
               child: Icon(Icons.tune_rounded, color: AppColors.getSubtextColor(context), size: 20),
             ),
@@ -253,13 +253,13 @@ class _AllEntriesScreenState extends State<AllEntriesScreen> {
       decoration: BoxDecoration(
         color: AppColors.getCardColor(context), 
         borderRadius: BorderRadius.circular(22), 
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), shape: BoxShape.circle),
+            decoration: BoxDecoration(color: statusColor.withOpacity(0.1), shape: BoxShape.circle),
             child: Icon(Icons.download_rounded, color: statusColor, size: 20),
           ),
           const SizedBox(width: 15),
@@ -269,7 +269,7 @@ class _AllEntriesScreenState extends State<AllEntriesScreen> {
               children: [
                 Text(name, style: TextStyle(color: AppColors.getTextColor(context), fontWeight: FontWeight.bold, fontSize: 14), overflow: TextOverflow.ellipsis),
                 Text(prov, style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 11)),
-                Text(date, style: TextStyle(color: AppColors.getSubtextColor(context).withValues(alpha: 0.5), fontSize: 10)),
+                Text(date, style: TextStyle(color: AppColors.getSubtextColor(context).withOpacity(0.5), fontSize: 10)),
               ],
             ),
           ),
@@ -296,13 +296,13 @@ class _AllEntriesScreenState extends State<AllEntriesScreen> {
           child: Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: _currentPage > 1 ? AppColors.getCardColor(context) : AppColors.getCardColor(context).withValues(alpha: 0.5),
+              color: _currentPage > 1 ? AppColors.getCardColor(context) : AppColors.getCardColor(context).withOpacity(0.5),
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+              border: Border.all(color: Colors.white.withOpacity(0.05)),
             ),
             child: Icon(
               Icons.chevron_left_rounded,
-              color: _currentPage > 1 ? AppColors.getTextColor(context) : AppColors.getSubtextColor(context).withValues(alpha: 0.3),
+              color: _currentPage > 1 ? AppColors.getTextColor(context) : AppColors.getSubtextColor(context).withOpacity(0.3),
             ),
           ),
         ),
@@ -330,8 +330,8 @@ class _AllEntriesScreenState extends State<AllEntriesScreen> {
               decoration: BoxDecoration(
                 color: isSelected ? Colors.green : AppColors.getCardColor(context),
                 shape: BoxShape.circle,
-                border: Border.all(color: isSelected ? Colors.green : Colors.white.withValues(alpha: 0.05)),
-                boxShadow: isSelected ? [BoxShadow(color: Colors.green.withValues(alpha: 0.3), blurRadius: 8)] : null,
+                border: Border.all(color: isSelected ? Colors.green : Colors.white.withOpacity(0.05)),
+                boxShadow: isSelected ? [BoxShadow(color: Colors.green.withOpacity(0.3), blurRadius: 8)] : null,
               ),
               alignment: Alignment.center,
               child: Text(
@@ -351,13 +351,13 @@ class _AllEntriesScreenState extends State<AllEntriesScreen> {
           child: Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: _currentPage < totalPages ? AppColors.getCardColor(context) : AppColors.getCardColor(context).withValues(alpha: 0.5),
+              color: _currentPage < totalPages ? AppColors.getCardColor(context) : AppColors.getCardColor(context).withOpacity(0.5),
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+              border: Border.all(color: Colors.white.withOpacity(0.05)),
             ),
             child: Icon(
               Icons.chevron_right_rounded,
-              color: _currentPage < totalPages ? AppColors.getTextColor(context) : AppColors.getSubtextColor(context).withValues(alpha: 0.3),
+              color: _currentPage < totalPages ? AppColors.getTextColor(context) : AppColors.getSubtextColor(context).withOpacity(0.3),
             ),
           ),
         ),
@@ -451,9 +451,9 @@ class _TransactionDetailSheetState extends State<_TransactionDetailSheet> {
       child: Container(
         constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.88),
         decoration: BoxDecoration(
-          color: AppColors.getCardColor(context).withValues(alpha: 0.95),
+          color: AppColors.getCardColor(context).withOpacity(0.95),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          border: Border.all(color: Colors.white.withOpacity(0.08)),
         ),
         padding: const EdgeInsets.all(24),
         child: SingleChildScrollView(
@@ -490,7 +490,7 @@ class _TransactionDetailSheetState extends State<_TransactionDetailSheet> {
                       return Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                         decoration: BoxDecoration(
-                          color: reasonColor.withValues(alpha: 0.1),
+                          color: reasonColor.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(
@@ -561,16 +561,16 @@ class _TransactionDetailSheetState extends State<_TransactionDetailSheet> {
                     margin: const EdgeInsets.only(bottom: 10),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: isDark ? 0.02 : 0.04),
+                      color: Colors.white.withOpacity(isDark ? 0.02 : 0.04),
                       borderRadius: BorderRadius.circular(15),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.03)),
+                      border: Border.all(color: Colors.white.withOpacity(0.03)),
                     ),
                     child: Row(
                       children: [
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: AppColors.moradoPrincipal.withValues(alpha: 0.1),
+                            color: AppColors.moradoPrincipal.withOpacity(0.1),
                             shape: BoxShape.circle,
                           ),
                           child: const Icon(Icons.inventory_2_rounded, color: AppColors.moradoPrincipal, size: 16),
@@ -653,9 +653,9 @@ class _TransactionDetailSheetState extends State<_TransactionDetailSheet> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: isDark ? 0.02 : 0.04),
+                    color: Colors.white.withOpacity(isDark ? 0.02 : 0.04),
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                    border: Border.all(color: Colors.white.withOpacity(0.05)),
                   ),
                   child: Row(
                     children: [
@@ -695,19 +695,19 @@ class _TransactionDetailSheetState extends State<_TransactionDetailSheet> {
                       gradient: LinearGradient(
                         colors: widget.isEntrada
                           ? [
-                              Colors.green.withValues(alpha: isDark ? 0.08 : 0.04),
-                              Colors.teal.withValues(alpha: isDark ? 0.06 : 0.03),
+                              Colors.green.withOpacity(isDark ? 0.08 : 0.04),
+                              Colors.teal.withOpacity(isDark ? 0.06 : 0.03),
                             ]
                           : [
-                              const Color(0xFF6A11CB).withValues(alpha: isDark ? 0.08 : 0.04),
-                              const Color(0xFF2575FC).withValues(alpha: isDark ? 0.06 : 0.03),
+                              const Color(0xFF6A11CB).withOpacity(isDark ? 0.08 : 0.04),
+                              const Color(0xFF2575FC).withOpacity(isDark ? 0.06 : 0.03),
                             ],
                       ),
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
                         color: widget.isEntrada 
-                          ? Colors.green.withValues(alpha: 0.18)
-                          : const Color(0xFF6A11CB).withValues(alpha: 0.18),
+                          ? Colors.green.withOpacity(0.18)
+                          : const Color(0xFF6A11CB).withOpacity(0.18),
                       ),
                     ),
                     child: Column(
@@ -722,8 +722,8 @@ class _TransactionDetailSheetState extends State<_TransactionDetailSheet> {
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                   decoration: BoxDecoration(
                                     color: widget.isEntrada 
-                                      ? Colors.green.withValues(alpha: 0.15)
-                                      : const Color(0xFF6A11CB).withValues(alpha: 0.15),
+                                      ? Colors.green.withOpacity(0.15)
+                                      : const Color(0xFF6A11CB).withOpacity(0.15),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: Text(
@@ -794,7 +794,7 @@ class _TransactionDetailSheetState extends State<_TransactionDetailSheet> {
                       borderRadius: BorderRadius.circular(15),
                       boxShadow: [
                         BoxShadow(
-                          color: (widget.isEntrada ? Colors.green : Colors.orange).withValues(alpha: 0.3),
+                          color: (widget.isEntrada ? Colors.green : Colors.orange).withOpacity(0.3),
                           blurRadius: 10,
                         ),
                       ],
