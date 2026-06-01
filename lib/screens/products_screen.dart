@@ -126,7 +126,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                             const WavyProgressIndicator(width: 150, height: 30, strokeWidth: 5),
                             const SizedBox(height: 15),
                             Text(
-                              'Procesando en SQL Server...',
+                              'Procesando...',
                               style: TextStyle(
                                 color: AppColors.getTextColor(context),
                                 fontWeight: FontWeight.bold,

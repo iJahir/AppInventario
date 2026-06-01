@@ -1228,7 +1228,7 @@ class _TransactionDetailSheetState extends State<_TransactionDetailSheet> {
                 },
               ),
 
-              if (false) ...[
+              if (true) ...[
                 const SizedBox(height: 20),
                 const Divider(color: Colors.white10, height: 1),
                 const SizedBox(height: 15),

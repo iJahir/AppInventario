@@ -357,7 +357,7 @@ class _NuevaSalidaScreenState extends State<NuevaSalidaScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(product['name'], style: TextStyle(color: AppColors.getTextColor(context), fontWeight: FontWeight.bold)),
-                Text("Cant: ${product['quantity']} | Unit: \$${product['price']}", style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 12)),
+                Text("Cant: ${product['quantity']} | Venta: \$${product['price']}", style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 12)),
                 const SizedBox(height: 5),
                 FutureBuilder<Map<String, dynamic>?>(
                   future: Provider.of<ProductProvider>(context, listen: false).fetchPepsPreview(
@@ -454,7 +454,7 @@ class _NuevaSalidaScreenState extends State<NuevaSalidaScreen> {
           _summaryRow(context, 'Total productos:', '${_productos.length}'),
           _summaryRow(context, 'Total unidades:', '${_productos.fold(0, (sum, item) => sum + (item['quantity'] as int))}'),
           Divider(color: AppColors.getTextColor(context).withValues(alpha: 0.1), height: 20),
-          _summaryRow(context, 'Subtotal:', '\$${subtotal.toStringAsFixed(2)}'),
+          _summaryRow(context, 'Subtotal Venta:', '\$${subtotal.toStringAsFixed(2)}'),
           if (taxes > 0)
             _summaryRow(context, 'Impuestos:', '\$${taxes.toStringAsFixed(2)}'),
           if (discount > 0)
@@ -551,7 +551,7 @@ class _NuevaSalidaScreenState extends State<NuevaSalidaScreen> {
                           SweetAlert.show(
                             context,
                             title: '¡Registro Exitoso!',
-                            message: 'Salida registrada exitosamente en SQL Server.',
+                            message: 'La salida fue registrada con éxito.',
                             type: SweetAlertType.success,
                             onConfirm: () {
                               Navigator.pop(context);
@@ -887,11 +887,44 @@ class _AgregarProductoSalidaModalState extends State<_AgregarProductoSalidaModal
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 2),
                         child: Text(
-                          '• Lote #$lotId: $qty un. × \$$cost',
+                          '• Lote #$lotId ($qty un.)',
+                          style: const TextStyle(color: AppColors.azulPrincipal, fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                      );
+                    }).toList(),
+                    const Divider(color: Colors.white10, height: 16),
+                    Text(
+                      'Costo PEPS Estimado',
+                      style: TextStyle(color: AppColors.getTextColor(context), fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 6),
+                    ...(_pepsPreview!['breakdown'] as List).map((b) {
+                      final lotId = b['lotId'] ?? '?';
+                      final qty = b['quantity'] ?? 0;
+                      final cost = (b['unitCost'] ?? 0.0) as double;
+                      final sub = qty * cost;
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Text(
+                          'Lote #$lotId:\n$qty × \$$cost = \$${sub.toStringAsFixed(2)}',
                           style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 11),
                         ),
                       );
                     }).toList(),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Costo Total PEPS:',
+                          style: TextStyle(color: AppColors.getTextColor(context), fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          '\$${(_pepsPreview!['totalCost'] ?? 0.0).toStringAsFixed(2)}',
+                          style: TextStyle(color: AppColors.azulPrincipal, fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -987,7 +1020,7 @@ class _AgregarProductoSalidaModalState extends State<_AgregarProductoSalidaModal
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Precio unitario', style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 12)),
+        Text('Precio Venta', style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 12)),
         const SizedBox(height: 8),
         Container(
           height: 55,
@@ -1019,7 +1052,7 @@ class _AgregarProductoSalidaModalState extends State<_AgregarProductoSalidaModal
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text('Subtotal:', style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 14)),
+        Text('Subtotal Venta:', style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 14)),
         Text('\$${(_quantity * _price).toStringAsFixed(2)}', 
           style: TextStyle(color: AppColors.getTextColor(context), fontSize: 20, fontWeight: FontWeight.bold)),
       ],

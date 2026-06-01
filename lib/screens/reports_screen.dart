@@ -195,7 +195,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           children: [
             Text('Se ha compilado el reporte de **$type** en formato **$format**.', style: const TextStyle(color: Colors.white70, fontSize: 13)),
             const SizedBox(height: 8),
-            const Text('El registro de auditoría fue guardado con éxito en SQL Server.', style: TextStyle(color: AppColors.moradoPrincipal, fontSize: 11, fontWeight: FontWeight.bold)),
+            const Text('El registro de auditoría fue guardado con éxito.', style: TextStyle(color: AppColors.moradoPrincipal, fontSize: 11, fontWeight: FontWeight.bold)),
             if (csvContent != null) ...[
               const SizedBox(height: 12),
               const Text('Vista previa del contenido:', style: TextStyle(color: Colors.white54, fontSize: 10)),

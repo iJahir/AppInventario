@@ -480,7 +480,7 @@ class _NuevaEntradaScreenState extends State<NuevaEntradaScreen> {
                           SweetAlert.show(
                             context,
                             title: '¡Registro Exitoso!',
-                            message: 'Entrada registrada exitosamente en SQL Server.',
+                            message: 'La entrada fue registrada con éxito.',
                             type: SweetAlertType.success,
                             onConfirm: () {
                               Navigator.pop(context);
@@ -590,7 +590,7 @@ class _AgregarProductoModalState extends State<_AgregarProductoModal> {
                     if (matchedProduct != null) {
                       setState(() {
                         _selectedProductId = matchedProduct!.id;
-                        _price = matchedProduct.price * 0.7;
+                        _price = matchedProduct.purchasePrice ?? (matchedProduct.price * 0.7);
                       });
                       Navigator.pop(ctx);
                       SweetAlert.show(
@@ -713,7 +713,7 @@ class _AgregarProductoModalState extends State<_AgregarProductoModal> {
                 setState(() {
                   _selectedProductId = val;
                   final prod = productProvider.products.firstWhere((p) => p.id == val);
-                  _price = prod.price * 0.7;
+                  _price = prod.purchasePrice ?? (prod.price * 0.7);
                 });
               },
             ),

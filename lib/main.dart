@@ -36,7 +36,7 @@ class MyApp extends StatelessWidget {
     
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Inventario Pro',
+      title: 'StockMaster',
       navigatorKey: AppRoutes.navigatorKey,
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
