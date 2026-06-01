@@ -852,4 +852,3 @@ class _TransactionDetailSheetState extends State<_TransactionDetailSheet> {
     );
   }
 }
-}

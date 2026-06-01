@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:provider/provider.dart';
 import '../providers/inventory_provider.dart';
 import '../providers/theme_provider.dart';
+import '../providers/product_provider.dart';
 import '../utils/routes.dart';
 import '../utils/app_colors.dart';
 
@@ -759,6 +760,199 @@ class _EntradaScreenState extends State<EntradaScreen> {
       },
     );
   }
+
+  void _showAnalyticsSummary(BuildContext context, bool isEntrada) {
+    final inventoryProvider = Provider.of<InventoryProvider>(context, listen: false);
+    final transactions = isEntrada ? inventoryProvider.entries : inventoryProvider.exits;
+    final totalAmount = transactions.fold(0.0, (sum, e) => sum + ((e['totalAmount'] as num?)?.toDouble() ?? 0.0));
+    final count = transactions.length;
+    final avgAmount = count > 0 ? totalAmount / count : 0.0;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) {
+        final bool isDark = Theme.of(context).brightness == Brightness.dark;
+        return BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            decoration: BoxDecoration(
+              color: AppColors.getCardColor(context).withValues(alpha: 0.95),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            ),
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40, height: 4,
+                    decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      isEntrada ? 'Análisis de Entradas' : 'Análisis de Salidas',
+                      style: TextStyle(color: AppColors.getTextColor(context), fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const Icon(Icons.analytics_rounded, color: AppColors.moradoPrincipal),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                const Divider(color: Colors.white10),
+                const SizedBox(height: 15),
+                
+                Row(
+                  children: [
+                    Expanded(
+                      child: _analyticKpiBox(
+                        context, 
+                        'Total Registrado', 
+                        '\$${totalAmount.toStringAsFixed(0)}', 
+                        isEntrada ? Colors.greenAccent : Colors.orangeAccent,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _analyticKpiBox(
+                        context, 
+                        'Movimientos', 
+                        '$count registros', 
+                        AppColors.azulPrincipal,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _analyticKpiBox(
+                        context, 
+                        'Promedio', 
+                        '\$${avgAmount.toStringAsFixed(0)}', 
+                        AppColors.moradoPrincipal,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 25),
+
+                Text(
+                  'Volumen Operacional Semanal',
+                  style: TextStyle(color: AppColors.getTextColor(context), fontSize: 13, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 15),
+                
+                _weeklyFlowVisualization(context, transactions, isEntrada),
+                const SizedBox(height: 25),
+                
+                GestureDetector(
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.pushNamed(context, AppRoutes.reports);
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    height: 50,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(colors: [AppColors.moradoPrincipal, AppColors.azulPrincipal]),
+                      borderRadius: BorderRadius.circular(15),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.moradoPrincipal.withValues(alpha: 0.3),
+                          blurRadius: 10,
+                        ),
+                      ],
+                    ),
+                    child: const Center(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.bar_chart_rounded, color: Colors.white),
+                          SizedBox(width: 8),
+                          Text(
+                            'Ver Centro Analítico Completo',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _analyticKpiBox(BuildContext context, String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: Theme.of(context).brightness == Brightness.dark ? 0.02 : 0.04),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 9)),
+          const SizedBox(height: 6),
+          Text(value, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  Widget _weeklyFlowVisualization(BuildContext context, List<Map<String, dynamic>> txs, bool isEntrada) {
+    final stats = _calculateWeeklyStats(txs);
+    final days = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: isDark ? 0.01 : 0.02),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.03)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: List.generate(7, (index) {
+          final double h = stats[index];
+          return Column(
+            children: [
+              Text('${(h * 10).toStringAsFixed(0)}', style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 8)),
+              const SizedBox(height: 4),
+              Container(
+                width: 12,
+                height: 80 * h,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: isEntrada 
+                      ? [AppColors.moradoPrincipal, Colors.greenAccent]
+                      : [Colors.orangeAccent, Colors.redAccent],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(days[index], style: TextStyle(color: AppColors.getTextColor(context), fontSize: 10, fontWeight: FontWeight.bold)),
+            ],
+          );
+        }),
+      ),
+    );
+  }
 }
 
 class _TransactionDetailSheet extends StatefulWidget {
@@ -805,6 +999,54 @@ class _TransactionDetailSheetState extends State<_TransactionDetailSheet> {
         });
       }
     }
+  }
+
+  Widget _fifoMetaChip(IconData icon, String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(color: Colors.white30, fontSize: 9, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 3),
+        Row(
+          children: [
+            Icon(icon, color: widget.isEntrada ? Colors.greenAccent : const Color(0xFFB39DDB), size: 11),
+            const SizedBox(width: 4),
+            Text(
+              value,
+              style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _infoDetailItem(BuildContext context, IconData icon, String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: AppColors.getSubtextColor(context), size: 16),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 10)),
+              const SizedBox(height: 2),
+              Text(
+                value, 
+                style: TextStyle(color: AppColors.getTextColor(context), fontSize: 12, fontWeight: FontWeight.bold),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -883,7 +1125,6 @@ class _TransactionDetailSheetState extends State<_TransactionDetailSheet> {
               const Divider(color: Colors.white10, height: 1),
               const SizedBox(height: 15),
               
-              // Info Grid
               Row(
                 children: [
                   Expanded(
@@ -977,7 +1218,6 @@ class _TransactionDetailSheetState extends State<_TransactionDetailSheet> {
                 },
               ),
 
-              // ─── SECCIÓN PEPS (para SALIDAS y ENTRADAS) ───
               const SizedBox(height: 20),
               const Divider(color: Colors.white10, height: 1),
               const SizedBox(height: 15),
@@ -1080,8 +1320,8 @@ class _TransactionDetailSheetState extends State<_TransactionDetailSheet> {
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
                         color: widget.isEntrada 
-                          ? Colors.green.withValues(alpha: 0.18)
-                          : const Color(0xFF6A11CB).withValues(alpha: 0.18),
+                          ? Colors.green.withValues(alpha: 0.1) 
+                          : const Color(0xFF6A11CB).withValues(alpha: 0.1),
                       ),
                     ),
                     child: Column(
@@ -1093,10 +1333,10 @@ class _TransactionDetailSheetState extends State<_TransactionDetailSheet> {
                             Row(
                               children: [
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                   decoration: BoxDecoration(
                                     color: widget.isEntrada 
-                                      ? Colors.green.withValues(alpha: 0.15)
+                                      ? Colors.green.withValues(alpha: 0.15) 
                                       : const Color(0xFF6A11CB).withValues(alpha: 0.15),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
@@ -1104,8 +1344,8 @@ class _TransactionDetailSheetState extends State<_TransactionDetailSheet> {
                                     'Lote #$lotId',
                                     style: TextStyle(
                                       color: widget.isEntrada ? Colors.greenAccent : const Color(0xFFB39DDB),
+                                      fontSize: 10,
                                       fontWeight: FontWeight.bold,
-                                      fontSize: 11,
                                     ),
                                   ),
                                 ),
@@ -1184,277 +1424,6 @@ class _TransactionDetailSheetState extends State<_TransactionDetailSheet> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _fifoMetaChip(IconData icon, String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(color: Colors.white30, fontSize: 9, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 3),
-        Row(
-          children: [
-            Icon(icon, color: widget.isEntrada ? Colors.greenAccent : const Color(0xFFB39DDB), size: 11),
-            const SizedBox(width: 4),
-            Text(
-              value,
-              style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _infoDetailItem(BuildContext context, IconData icon, String label, String value) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, color: AppColors.getSubtextColor(context), size: 16),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 10)),
-              const SizedBox(height: 2),
-              Text(
-                value, 
-                style: TextStyle(color: AppColors.getTextColor(context), fontSize: 12, fontWeight: FontWeight.bold),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-  Widget _infoDetailItem(BuildContext context, IconData icon, String label, String value) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, color: AppColors.getSubtextColor(context), size: 16),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 10)),
-              const SizedBox(height: 2),
-              Text(
-                value, 
-                style: TextStyle(color: AppColors.getTextColor(context), fontSize: 12, fontWeight: FontWeight.bold),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  void _showAnalyticsSummary(BuildContext context, bool isEntrada) {
-    final inventoryProvider = Provider.of<InventoryProvider>(context, listen: false);
-    final transactions = isEntrada ? inventoryProvider.entries : inventoryProvider.exits;
-    final totalAmount = transactions.fold(0.0, (sum, e) => sum + ((e['totalAmount'] as num?)?.toDouble() ?? 0.0));
-    final count = transactions.length;
-    final avgAmount = count > 0 ? totalAmount / count : 0.0;
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) {
-        final bool isDark = Theme.of(context).brightness == Brightness.dark;
-        return BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-          child: Container(
-            decoration: BoxDecoration(
-              color: AppColors.getCardColor(context).withValues(alpha: 0.95),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-            ),
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40, height: 4,
-                    decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      isEntrada ? 'Análisis de Entradas' : 'Análisis de Salidas',
-                      style: TextStyle(color: AppColors.getTextColor(context), fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    const Icon(Icons.analytics_rounded, color: AppColors.moradoPrincipal),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                const Divider(color: Colors.white10),
-                const SizedBox(height: 15),
-                
-                // Analytics cards row
-                Row(
-                  children: [
-                    Expanded(
-                      child: _analyticKpiBox(
-                        context, 
-                        'Total Registrado', 
-                        '\$${totalAmount.toStringAsFixed(0)}', 
-                        isEntrada ? Colors.greenAccent : Colors.orangeAccent,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _analyticKpiBox(
-                        context, 
-                        'Movimientos', 
-                        '$count registros', 
-                        AppColors.azulPrincipal,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _analyticKpiBox(
-                        context, 
-                        'Promedio', 
-                        '\$${avgAmount.toStringAsFixed(0)}', 
-                        AppColors.moradoPrincipal,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 25),
-                
-                // Custom chart title
-                Text(
-                  'Volumen Operacional Semanal',
-                  style: TextStyle(color: AppColors.getTextColor(context), fontSize: 13, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 15),
-                
-                // Elegant visual distribution bars
-                _weeklyFlowVisualization(context, transactions, isEntrada),
-                const SizedBox(height: 25),
-                
-                // CTA Button to ReportsScreen
-                GestureDetector(
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.pushNamed(context, AppRoutes.reports);
-                  },
-                  child: Container(
-                    width: double.infinity,
-                    height: 50,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(colors: [AppColors.moradoPrincipal, AppColors.azulPrincipal]),
-                      borderRadius: BorderRadius.circular(15),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.moradoPrincipal.withValues(alpha: 0.3),
-                          blurRadius: 10,
-                        ),
-                      ],
-                    ),
-                    child: const Center(
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.bar_chart_rounded, color: Colors.white),
-                          SizedBox(width: 8),
-                          Text(
-                            'Ver Centro Analítico Completo',
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _analyticKpiBox(BuildContext context, String label, String value, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: Theme.of(context).brightness == Brightness.dark ? 0.02 : 0.04),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 9)),
-          const SizedBox(height: 6),
-          Text(value, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.bold)),
-        ],
-      ),
-    );
-  }
-
-  Widget _weeklyFlowVisualization(BuildContext context, List<Map<String, dynamic>> txs, bool isEntrada) {
-    final stats = _calculateWeeklyStats(txs);
-    final days = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: isDark ? 0.01 : 0.02),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.03)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: List.generate(7, (index) {
-          final double h = stats[index];
-          return Column(
-            children: [
-              Text('${(h * 10).toStringAsFixed(0)}', style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 8)),
-              const SizedBox(height: 4),
-              Container(
-                width: 12,
-                height: 80 * h,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: isEntrada 
-                      ? [AppColors.moradoPrincipal, Colors.greenAccent]
-                      : [Colors.orangeAccent, Colors.redAccent],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(days[index], style: TextStyle(color: AppColors.getTextColor(context), fontSize: 10, fontWeight: FontWeight.bold)),
-            ],
-          );
-        }),
       ),
     );
   }
