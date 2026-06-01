@@ -7,8 +7,12 @@ import 'providers/product_provider.dart';
 import 'providers/inventory_provider.dart';
 import 'providers/theme_provider.dart';
 import 'providers/reports_provider.dart';
+import 'services/notification_service.dart';
+import 'widgets/inactivity_detector.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await NotificationService.initialize();
   runApp(
     MultiProvider(
       providers: [
@@ -32,12 +36,16 @@ class MyApp extends StatelessWidget {
     
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Gestión de Inventario',
+      title: 'Inventario Pro',
+      navigatorKey: AppRoutes.navigatorKey,
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeProvider.themeMode,
       initialRoute: AppRoutes.login,
       routes: AppRoutes.getRoutes(),
+      builder: (context, child) {
+        return InactivityDetector(child: child!);
+      },
     );
   }
 }

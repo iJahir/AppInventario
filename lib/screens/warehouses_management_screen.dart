@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:provider/provider.dart';
 import '../providers/inventory_provider.dart';
 import '../utils/app_colors.dart';
+import '../widgets/sweet_alert.dart';
 
 class WarehousesManagementScreen extends StatefulWidget {
   const WarehousesManagementScreen({super.key});
@@ -437,8 +438,11 @@ class _WarehousesManagementScreenState extends State<WarehousesManagementScreen>
                             final location = locationController.text.trim();
 
                             if (name.isEmpty) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Por favor ingresa un nombre.')),
+                              SweetAlert.show(
+                                context,
+                                title: 'Campo requerido',
+                                message: 'Por favor ingresa un nombre.',
+                                type: SweetAlertType.warning,
                               );
                               return;
                             }
@@ -454,14 +458,13 @@ class _WarehousesManagementScreenState extends State<WarehousesManagementScreen>
 
                             if (context.mounted) {
                               Navigator.pop(context);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    success
-                                        ? (isEdit ? 'Almacén actualizado con éxito.' : 'Almacén creado con éxito.')
-                                        : (provider.errorMessage ?? 'Error al guardar almacén.'),
-                                  ),
-                                ),
+                              SweetAlert.show(
+                                context,
+                                title: success ? '¡Guardado con éxito!' : 'Error al guardar',
+                                message: success
+                                    ? (isEdit ? 'Almacén actualizado con éxito.' : 'Almacén creado con éxito.')
+                                    : (provider.errorMessage ?? 'Error al guardar almacén.'),
+                                type: success ? SweetAlertType.success : SweetAlertType.error,
                               );
                             }
                           },
@@ -538,12 +541,11 @@ class _WarehousesManagementScreenState extends State<WarehousesManagementScreen>
 
                 if (context.mounted) {
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        success ? 'Almacén eliminado.' : (provider.errorMessage ?? 'Error al eliminar almacén.'),
-                      ),
-                    ),
+                  SweetAlert.show(
+                    context,
+                    title: success ? '¡Eliminado!' : 'Error',
+                    message: success ? 'Almacén eliminado exitosamente.' : (provider.errorMessage ?? 'Error al eliminar almacén.'),
+                    type: success ? SweetAlertType.success : SweetAlertType.error,
                   );
                 }
               },

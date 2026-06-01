@@ -2,10 +2,10 @@
 /// Cambia los valores aquí para conectar a tu propio servidor o base de datos.
 class DbConfig {
   /// URL base de tu API REST.
-  /// - Para emulador de Android local usa: 'http://10.0.2.2:3000/api'
+  /// - Para probar con tu celular físico o emulador en tu red Wi-Fi: 'http://192.168.1.95:3000/api'
+  /// - Para emulador de Android local aislado usa: 'http://10.0.2.2:3000/api'
   /// - Para emulador de iOS local usa: 'http://localhost:3000/api'
-  /// - Para producción/servidor remoto usa la IP pública o dominio: 'https://mi-api-inventario.com/api'
-  static const String apiBaseUrl = 'http://10.0.2.2:3000/api';
+  static const String apiBaseUrl = 'http://192.168.1.95:3000/api';
 
   /// Nombre de la base de datos remota que montaste (Ej: 'inventario_db')
   /// Esto sirve como identificador y referencia para las solicitudes o configuraciones de tu API.

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:local_auth/local_auth.dart';
 import '../providers/auth_provider.dart';
 import '../utils/routes.dart';
 import '../utils/app_colors.dart';
@@ -16,6 +18,72 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  bool _showBiometricsIcon = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkBiometricsOnStartup();
+  }
+
+  Future<void> _checkBiometricsOnStartup() async {
+    final prefs = await SharedPreferences.getInstance();
+    final bool enabled = prefs.getBool('biometrics_enabled') ?? false;
+    final String savedEmail = prefs.getString('biometric_email') ?? '';
+    setState(() {
+      _showBiometricsIcon = enabled;
+      // Pre-rellenar el campo email con el usuario guardado
+      if (enabled && savedEmail.isNotEmpty) {
+        _emailController.text = savedEmail;
+      }
+    });
+    if (enabled) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _authenticateWithBiometrics();
+      });
+    }
+  }
+
+  Future<void> _authenticateWithBiometrics() async {
+    final LocalAuthentication auth = LocalAuthentication();
+    try {
+      final bool authenticated = await auth.authenticate(
+        localizedReason: 'Inicia sesión de forma rápida y segura',
+        biometricOnly: true,
+        persistAcrossBackgrounding: true,
+      );
+      if (authenticated && mounted) {
+        final prefs = await SharedPreferences.getInstance();
+        final String savedEmail = prefs.getString('biometric_email') ?? '';
+        final String savedPassword = prefs.getString('biometric_password') ?? '';
+
+        if (savedEmail.isEmpty || savedPassword.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No hay credenciales guardadas. Inicia sesión manualmente primero.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          return;
+        }
+
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        final success = await authProvider.login(savedEmail, savedPassword);
+        if (success && mounted) {
+          Navigator.pushReplacementNamed(context, AppRoutes.dashboard);
+        } else if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(authProvider.errorMessage ?? 'No se pudo iniciar sesión automáticamente.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print("Error authenticating with biometrics: $e");
+    }
+  }
 
   @override
   void dispose() {
@@ -239,8 +307,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Widget _buildLoginButton(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
+    final bool showBiometrics = _showBiometricsIcon;
 
-    return GestureDetector(
+    final Widget mainButton = GestureDetector(
       onTap: authProvider.isLoading
           ? null
           : () async {
@@ -255,6 +324,13 @@ class _LoginScreenState extends State<LoginScreen> {
                 _passwordController.text.trim(),
               );
               if (success) {
+                // Si la biometría está activa, guardar las credenciales para acceso futuro
+                final prefs = await SharedPreferences.getInstance();
+                final bool biometricsEnabled = prefs.getBool('biometrics_enabled') ?? false;
+                if (biometricsEnabled) {
+                  await prefs.setString('biometric_email', _emailController.text.trim());
+                  await prefs.setString('biometric_password', _passwordController.text.trim());
+                }
                 if (context.mounted) {
                   Navigator.pushReplacementNamed(context, AppRoutes.dashboard);
                 }
@@ -267,7 +343,6 @@ class _LoginScreenState extends State<LoginScreen> {
               }
             },
       child: Container(
-        width: double.infinity,
         height: 55,
         decoration: BoxDecoration(
           gradient: const LinearGradient(colors: [AppColors.moradoPrincipal, AppColors.azulPrincipal]),
@@ -292,6 +367,30 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       ),
     );
+
+    if (showBiometrics) {
+      return Row(
+        children: [
+          Expanded(child: mainButton),
+          const SizedBox(width: 15),
+          GestureDetector(
+            onTap: _authenticateWithBiometrics,
+            child: Container(
+              height: 55,
+              width: 55,
+              decoration: BoxDecoration(
+                color: AppColors.moradoPrincipal.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.moradoPrincipal.withValues(alpha: 0.2)),
+              ),
+              child: const Icon(Icons.fingerprint_rounded, color: AppColors.moradoPrincipal, size: 30),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return mainButton;
   }
 
   Widget _socialBtn(BuildContext context, String url) {
@@ -304,7 +403,22 @@ class _LoginScreenState extends State<LoginScreen> {
         borderRadius: BorderRadius.circular(15),
         border: Border.all(color: AppColors.getTextColor(context).withValues(alpha: 0.05)),
       ),
-      child: Image.network(url, fit: BoxFit.contain),
+      child: Image.network(
+        url, 
+        fit: BoxFit.contain,
+        errorBuilder: (context, error, stackTrace) {
+          IconData icon = Icons.g_mobiledata_rounded;
+          Color color = Colors.redAccent;
+          if (url.contains('747')) {
+            icon = Icons.apple_rounded;
+            color = AppColors.getTextColor(context);
+          } else if (url.contains('732221')) {
+            icon = Icons.window_rounded;
+            color = Colors.blueAccent;
+          }
+          return Icon(icon, color: color, size: 24);
+        },
+      ),
     );
   }
 }

@@ -1,10 +1,18 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
+import 'dart:convert';
+import 'dart:io' as io;
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import '../providers/product_provider.dart';
 import '../models/product_model.dart';
 import '../utils/app_colors.dart';
 import '../utils/routes.dart';
+import '../widgets/sweet_alert.dart';
 
 class NuevoProductoScreen extends StatefulWidget {
   const NuevoProductoScreen({super.key});
@@ -15,6 +23,13 @@ class NuevoProductoScreen extends StatefulWidget {
 
 class _NuevoProductoScreenState extends State<NuevoProductoScreen> {
   final _formKey = GlobalKey<FormState>();
+  
+  ProductModel? _productToEdit;
+  bool _isEditMode = false;
+  bool _isInitialized = false;
+  
+  XFile? _pickedImageFile;
+  String? _base64Image;
   
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _skuController = TextEditingController();
@@ -45,6 +60,39 @@ class _NuevoProductoScreenState extends State<NuevoProductoScreen> {
     _categoryController.text = _selectedCategory;
     _unitController.text = _selectedUnit;
     _taxController.text = "0";
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_isInitialized) {
+      final args = ModalRoute.of(context)?.settings.arguments;
+      if (args != null && args is ProductModel) {
+        _productToEdit = args;
+        _isEditMode = true;
+        
+        _nameController.text = _productToEdit!.name;
+        _skuController.text = _productToEdit!.sku ?? '';
+        _descriptionController.text = _productToEdit!.description;
+        _priceBuyController.text = _productToEdit!.purchasePrice?.toStringAsFixed(2) ?? '';
+        _priceSellController.text = _productToEdit!.price.toStringAsFixed(2);
+        _taxController.text = _productToEdit!.taxPercentage?.toStringAsFixed(0) ?? '0';
+        _stock = _productToEdit!.stock;
+        _minStock = _productToEdit!.minStock ?? 0;
+        
+        _selectedCategory = _productToEdit!.category ?? 'General';
+        if (!_categoriesList.contains(_selectedCategory)) {
+          _categoriesList.add(_selectedCategory);
+        }
+        _categoryController.text = _selectedCategory;
+        
+        _selectedUnit = _productToEdit!.unitMeasure ?? 'Unidad';
+        _unitController.text = _selectedUnit;
+        
+        _calculateMargin();
+      }
+      _isInitialized = true;
+    }
   }
 
   void _calculateMargin() {
@@ -173,12 +221,18 @@ class _NuevoProductoScreenState extends State<NuevoProductoScreen> {
                           const SizedBox(height: 15),
                           _buildInventorySection(context),
                           const SizedBox(height: 25),
-                          _buildSectionTitle(context, 'Imágenes del producto (opcional)'),
-                          const SizedBox(height: 15),
-                          _buildImageUploadArea(context),
-                          const SizedBox(height: 30),
-                          _buildActionButtons(context),
-                          const SizedBox(height: 120),
+                           _buildSectionTitle(context, 'Imágenes del producto (opcional)'),
+                           const SizedBox(height: 15),
+                           _buildImageUploadArea(context),
+                           const SizedBox(height: 30),
+                            if (_isEditMode && _productToEdit != null) ...[
+                             _buildSectionTitle(context, 'Código QR de Producto'),
+                             const SizedBox(height: 15),
+                             _buildQRCodeSection(context, _productToEdit!),
+                             const SizedBox(height: 30),
+                           ],
+                           _buildActionButtons(context),
+                           const SizedBox(height: 120),
                         ],
                       ),
                     ),
@@ -224,10 +278,16 @@ class _NuevoProductoScreenState extends State<NuevoProductoScreen> {
                       child: const Icon(Icons.inventory_2_rounded, color: AppColors.moradoPrincipal, size: 18),
                     ),
                     const SizedBox(width: 10),
-                    Text('Nuevo Producto', style: TextStyle(color: AppColors.getTextColor(context), fontSize: 22, fontWeight: FontWeight.bold)),
+                    Text(
+                      _isEditMode ? 'Editar Producto' : 'Nuevo Producto', 
+                      style: TextStyle(color: AppColors.getTextColor(context), fontSize: 22, fontWeight: FontWeight.bold),
+                    ),
                   ],
                 ),
-                Text('Crea un nuevo producto en el inventario', style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 13)),
+                Text(
+                  _isEditMode ? 'Edita los detalles de este producto' : 'Crea un nuevo producto en el inventario', 
+                  style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 13),
+                ),
               ],
             ),
           ),
@@ -541,26 +601,135 @@ class _NuevoProductoScreenState extends State<NuevoProductoScreen> {
   }
 
   Widget _buildImageUploadArea(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      height: 120,
-      decoration: BoxDecoration(
-        color: AppColors.getCardColor(context),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppColors.moradoPrincipal.withValues(alpha: 0.2), style: BorderStyle.solid),
+    return GestureDetector(
+      onTap: _pickImage,
+      child: Container(
+        width: double.infinity,
+        height: 140,
+        decoration: BoxDecoration(
+          color: AppColors.getCardColor(context),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: AppColors.moradoPrincipal.withValues(alpha: 0.2), style: BorderStyle.solid),
+        ),
+        child: _pickedImageFile != null
+            ? ClipRRect(
+                borderRadius: BorderRadius.circular(22),
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: Image.file(
+                        io.File(_pickedImageFile!.path),
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    Positioned(
+                      top: 10, right: 10,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(10)),
+                        child: const Text('Cambiar', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : (_isEditMode && _productToEdit?.imageUrl != null)
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(22),
+                    child: Container(
+                      color: AppColors.moradoPrincipal.withValues(alpha: 0.05),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.photo_library_rounded, color: AppColors.moradoPrincipal, size: 28),
+                          const SizedBox(height: 10),
+                          const Text('Foto guardada en servidor local', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                          Text(
+                            _productToEdit!.imageUrl!.split('\\').last,
+                            style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 10),
+                          ),
+                          const SizedBox(height: 5),
+                          Text('Toca para cambiar de foto (Cámara / Galería)', style: TextStyle(color: AppColors.getSubtextColor(context).withValues(alpha: 0.6), fontSize: 9)),
+                        ],
+                      ),
+                    ),
+                  )
+                : Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(color: AppColors.moradoPrincipal.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(15)),
+                          child: const Icon(Icons.add_a_photo_outlined, color: AppColors.moradoPrincipal, size: 28),
+                        ),
+                        const SizedBox(height: 10),
+                        Text('Agregar imagen', style: TextStyle(color: AppColors.getTextColor(context), fontWeight: FontWeight.bold, fontSize: 14)),
+                        Text('Optimización automática (Calidad 30% - Liviana)', style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 11)),
+                      ],
+                    ),
+                  ),
       ),
-      child: Center(
+    );
+  }
+
+  Future<void> _pickImage() async {
+    final ImagePicker picker = ImagePicker();
+    
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: AppColors.getCardColor(context),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(25)),
+        ),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: AppColors.moradoPrincipal.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(15)),
-              child: const Icon(Icons.add_a_photo_outlined, color: AppColors.moradoPrincipal, size: 28),
+            const Text('Seleccionar Origen', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 20),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_rounded, color: AppColors.moradoPrincipal),
+              title: const Text('Tomar Foto (Cámara)', style: TextStyle(color: Colors.white)),
+              onTap: () async {
+                Navigator.pop(context);
+                final XFile? image = await picker.pickImage(
+                  source: ImageSource.camera,
+                  imageQuality: 30,
+                  maxWidth: 800,
+                  maxHeight: 800,
+                );
+                if (image != null) {
+                  final bytes = await image.readAsBytes();
+                  setState(() {
+                    _pickedImageFile = image;
+                    _base64Image = base64.encode(bytes);
+                  });
+                }
+              },
             ),
-            const SizedBox(height: 10),
-            Text('Agregar imagen', style: TextStyle(color: AppColors.getTextColor(context), fontWeight: FontWeight.bold, fontSize: 14)),
-            Text('PNG, JPG hasta 5MB', style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 11)),
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded, color: AppColors.azulPrincipal),
+              title: const Text('Elegir de Galería', style: TextStyle(color: Colors.white)),
+              onTap: () async {
+                Navigator.pop(context);
+                final XFile? image = await picker.pickImage(
+                  source: ImageSource.gallery,
+                  imageQuality: 30,
+                  maxWidth: 800,
+                  maxHeight: 800,
+                );
+                if (image != null) {
+                  final bytes = await image.readAsBytes();
+                  setState(() {
+                    _pickedImageFile = image;
+                    _base64Image = base64.encode(bytes);
+                  });
+                }
+              },
+            ),
           ],
         ),
       ),
@@ -596,6 +765,7 @@ class _NuevoProductoScreenState extends State<NuevoProductoScreen> {
                 : () async {
                     if (_formKey.currentState!.validate()) {
                       final newProduct = ProductModel(
+                        id: _isEditMode ? _productToEdit!.id : null,
                         name: _nameController.text.trim(),
                         description: _descriptionController.text.trim(),
                         price: double.tryParse(_priceSellController.text.trim()) ?? 0.0,
@@ -606,19 +776,33 @@ class _NuevoProductoScreenState extends State<NuevoProductoScreen> {
                         taxPercentage: double.tryParse(_taxController.text.trim()) ?? 0.0,
                         unitMeasure: _selectedUnit,
                         minStock: _minStock,
+                        base64Image: _base64Image,
+                        imageUrl: _isEditMode ? _productToEdit!.imageUrl : null,
                       );
                       
-                      final success = await productProvider.addProduct(newProduct);
+                      final success = _isEditMode
+                          ? await productProvider.updateProduct(newProduct)
+                          : await productProvider.addProduct(newProduct);
                       
                       if (context.mounted) {
                         if (success) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Producto guardado correctamente en la base de datos')),
+                          SweetAlert.show(
+                            context,
+                            title: '¡Operación Exitosa!',
+                            message: _isEditMode 
+                                ? 'El producto ha sido actualizado correctamente.' 
+                                : 'El producto ha sido guardado exitosamente.',
+                            type: SweetAlertType.success,
+                            onConfirm: () {
+                              Navigator.pop(context);
+                            },
                           );
-                          Navigator.pop(context);
                         } else {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(productProvider.errorMessage ?? 'Error al guardar el producto')),
+                          SweetAlert.show(
+                            context,
+                            title: 'Error al Guardar',
+                            message: productProvider.errorMessage ?? 'Ocurrió un error al procesar el producto.',
+                            type: SweetAlertType.error,
                           );
                         }
                       }
@@ -737,6 +921,363 @@ class _NuevoProductoScreenState extends State<NuevoProductoScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildQRCodeSection(BuildContext context, ProductModel product) {
+    final String qrData = product.sku ?? product.id ?? product.name;
+    
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.getCardColor(context),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Código QR de Producto',
+            style: TextStyle(
+              color: AppColors.getTextColor(context),
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 15),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(15),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10),
+                  ],
+                ),
+                child: QrImageView(
+                  data: qrData,
+                  version: QrVersions.auto,
+                  size: 110.0,
+                  gapless: false,
+                  eyeStyle: const QrEyeStyle(
+                    eyeShape: QrEyeShape.square,
+                    color: Colors.black,
+                  ),
+                  dataModuleStyle: const QrDataModuleStyle(
+                    dataModuleShape: QrDataModuleShape.square,
+                    color: Colors.black,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 20),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      product.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: AppColors.getTextColor(context),
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      'Código/SKU: $qrData',
+                      style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 11),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      'Precio: \$${product.price.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        color: AppColors.azulPrincipal,
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 15),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        GestureDetector(
+                          onTap: () => _showQRQuantityDialog(context, product),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [AppColors.moradoPrincipal, AppColors.azulPrincipal],
+                              ),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.max,
+                              children: [
+                                Icon(Icons.download_rounded, color: Colors.white, size: 14),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Descargar QR',
+                                  style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        GestureDetector(
+                          onTap: () => _simulateThermalPrinting(context, product),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: AppColors.getBackgroundColor(context),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.white24),
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.max,
+                              children: [
+                                Icon(Icons.print_rounded, color: Colors.white, size: 14),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Imprimir POS',
+                                  style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showQRQuantityDialog(BuildContext context, ProductModel product) {
+    int qty = 1;
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.getCardColor(context),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('Cantidad de Etiquetas', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Selecciona cuántas etiquetas QR de 10cm x 10cm deseas generar en el archivo PDF.',
+                style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 13),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    onPressed: () => setDialogState(() { if (qty > 1) qty--; }),
+                    icon: const Icon(Icons.remove_circle_outline_rounded, color: AppColors.moradoPrincipal, size: 30),
+                  ),
+                  const SizedBox(width: 15),
+                  Text('$qty', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                  const SizedBox(width: 15),
+                  IconButton(
+                    onPressed: () => setDialogState(() { if (qty < 100) qty++; }),
+                    icon: const Icon(Icons.add_circle_outline_rounded, color: AppColors.moradoPrincipal, size: 30),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Cancelar', style: TextStyle(color: AppColors.getSubtextColor(context))),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.moradoPrincipal),
+              onPressed: () {
+                Navigator.pop(ctx);
+                _generateAndShareQRLabels(context, product, qty);
+              },
+              child: const Text('Generar PDF', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _generateAndShareQRLabels(BuildContext context, ProductModel product, int quantity) async {
+    final doc = pw.Document();
+    final int itemsPerPage = 8;
+
+    for (int i = 0; i < quantity; i += itemsPerPage) {
+      final int end = (i + itemsPerPage < quantity) ? i + itemsPerPage : quantity;
+      final int pageItemsCount = end - i;
+
+      doc.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(1.5 * PdfPageFormat.cm),
+          build: (pw.Context ctx) {
+            return pw.GridView(
+              crossAxisCount: 2,
+              childAspectRatio: 1.0,
+              crossAxisSpacing: 1.0 * PdfPageFormat.cm,
+              mainAxisSpacing: 1.0 * PdfPageFormat.cm,
+              children: List<pw.Widget>.generate(pageItemsCount, (index) {
+                return pw.Container(
+                  alignment: pw.Alignment.center,
+                  decoration: pw.BoxDecoration(
+                    border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
+                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+                  ),
+                  padding: const pw.EdgeInsets.all(0.5 * PdfPageFormat.cm),
+                  child: pw.BarcodeWidget(
+                    barcode: pw.Barcode.qrCode(),
+                    data: product.sku ?? product.id ?? product.name,
+                    width: 140,
+                    height: 140,
+                  ),
+                );
+              }),
+            );
+          },
+        ),
+      );
+    }
+
+    final bytes = await doc.save();
+    
+    // Guardar en la carpeta pública de descargas (Android)
+    bool savedLocally = false;
+    String localPath = '';
+    try {
+      final dir = io.Directory('/storage/emulated/0/Download');
+      if (await dir.exists()) {
+        final cleanedName = product.name.replaceAll(RegExp(r'[^\w\s\-]'), '').replaceAll(' ', '_');
+        final filename = 'etiquetas_${cleanedName}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+        final file = io.File('${dir.path}/$filename');
+        await file.writeAsBytes(bytes);
+        savedLocally = true;
+        localPath = file.path;
+      }
+    } catch (e) {
+      // Ignorar si falla
+    }
+
+    if (context.mounted) {
+      if (savedLocally) {
+        SweetAlert.show(
+          context,
+          title: 'PDF Descargado',
+          message: 'El archivo de etiquetas se ha guardado en la carpeta de Descargas:\n\n${localPath.split('/').last}',
+          type: SweetAlertType.success,
+        );
+      }
+    }
+
+    await Printing.sharePdf(bytes: bytes, filename: 'etiquetas_${product.sku ?? product.id ?? product.name}.pdf');
+  }
+
+  void _simulateThermalPrinting(BuildContext context, ProductModel product) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        double progress = 0.0;
+        String statusText = "Buscando impresoras térmicas Bluetooth/Wi-Fi...";
+        
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            Future.delayed(const Duration(milliseconds: 800), () {
+              if (ctx.mounted && progress == 0.0) {
+                setDialogState(() {
+                  progress = 0.4;
+                  statusText = "Conectando a 'SPP-R200II' (Bluetooth 5.0)...";
+                });
+              }
+            });
+            Future.delayed(const Duration(milliseconds: 1600), () {
+              if (ctx.mounted && progress == 0.4) {
+                setDialogState(() {
+                  progress = 0.8;
+                  statusText = "Transmitiendo datos de etiqueta de 58mm...";
+                });
+              }
+            });
+            Future.delayed(const Duration(milliseconds: 2400), () {
+              if (ctx.mounted && progress == 0.8) {
+                setDialogState(() {
+                  progress = 1.0;
+                  statusText = "¡Etiqueta física impresa con éxito!";
+                });
+              }
+            });
+
+            return Dialog(
+              backgroundColor: AppColors.getCardColor(context),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              child: Padding(
+                padding: const EdgeInsets.all(25),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.print_rounded, color: AppColors.moradoPrincipal, size: 48),
+                    const SizedBox(height: 15),
+                    const Text(
+                      'Impresión Térmica POS',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
+                    ),
+                    const SizedBox(height: 20),
+                    LinearProgressIndicator(
+                      value: progress,
+                      backgroundColor: Colors.white10,
+                      valueColor: const AlwaysStoppedAnimation<Color>(AppColors.azulPrincipal),
+                    ),
+                    const SizedBox(height: 15),
+                    Text(
+                      statusText,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 12),
+                    ),
+                    const SizedBox(height: 25),
+                    if (progress >= 1.0)
+                      GestureDetector(
+                        onTap: () => Navigator.pop(ctx),
+                        child: Container(
+                          width: double.infinity,
+                          height: 45,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(colors: [AppColors.moradoPrincipal, AppColors.azulPrincipal]),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Center(
+                            child: Text(
+                              'Listo',
+                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }

@@ -8,6 +8,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Servir la carpeta de imágenes del inventario para que la app pueda acceder a ellas por red
+app.use('/api/uploads', express.static('C:\\Users\\aldo1\\Documents\\InventarioAPP'));
+
 // CONFIGURACIÓN DE CONEXIÓN A TU SQL SERVER CON TUS CREDENCIALES
 const dbConfig = {
     user: 'Inventario_user',
@@ -22,9 +25,67 @@ const dbConfig = {
 
 // Conectar a SQL Server
 sql.connect(dbConfig)
-    .then(pool => {
+    .then(async (pool) => {
         if (pool.connected) {
             console.log('✅ Conectado exitosamente a SQL Server: inventario_multiplataforma');
+
+            // Verificar y agregar columna 'reason' si no existe, y crear tabla 'product_lots' para PEPS
+            try {
+                await pool.request().query(`
+                    IF NOT EXISTS (
+                        SELECT * FROM sys.columns 
+                        WHERE object_id = OBJECT_ID('inventory_transactions') AND name = 'reason'
+                    )
+                    BEGIN
+                        ALTER TABLE inventory_transactions ADD reason NVARCHAR(100) NULL DEFAULT 'Venta';
+                    END
+                `);
+                console.log('✅ Columna "reason" verificada/creada exitosamente en la BD.');
+
+                await pool.request().query(`
+                    IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='product_lots' AND xtype='U')
+                    BEGIN
+                        CREATE TABLE product_lots (
+                            id INT IDENTITY(1,1) PRIMARY KEY,
+                            product_id BIGINT NOT NULL FOREIGN KEY REFERENCES products(id),
+                            transaction_id BIGINT NULL FOREIGN KEY REFERENCES inventory_transactions(id),
+                            warehouse_id BIGINT NOT NULL FOREIGN KEY REFERENCES warehouses(id),
+                            entry_date DATETIME DEFAULT GETDATE(),
+                            initial_quantity INT NOT NULL CHECK (initial_quantity >= 0),
+                            available_quantity INT NOT NULL CHECK (available_quantity >= 0),
+                            unit_cost DECIMAL(18,2) NOT NULL
+                        );
+
+                        -- Poblar lotes iniciales para stock existente de modo que sean compatibles con PEPS
+                        INSERT INTO product_lots (product_id, transaction_id, warehouse_id, entry_date, initial_quantity, available_quantity, unit_cost)
+                        SELECT 
+                            p.id, 
+                            NULL, 
+                            COALESCE((SELECT TOP 1 id FROM warehouses ORDER BY id ASC), 1),
+                            GETDATE(), 
+                            p.stock, 
+                            p.stock, 
+                            p.purchase_price
+                        FROM products p
+                        WHERE p.stock > 0;
+                    END
+                `);
+                console.log('✅ Tabla "product_lots" de PEPS/FIFO verificada/creada exitosamente en la BD.');
+
+                // Verificar y crear columna 'lot_id' en 'transaction_items' para traza PEPS
+                await pool.request().query(`
+                    IF NOT EXISTS (
+                        SELECT * FROM sys.columns 
+                        WHERE object_id = OBJECT_ID('transaction_items') AND name = 'lot_id'
+                    )
+                    BEGIN
+                        ALTER TABLE transaction_items ADD lot_id BIGINT NULL FOREIGN KEY REFERENCES product_lots(id);
+                    END
+                `);
+                console.log('✅ Columna "lot_id" en "transaction_items" verificada/creada exitosamente en la BD.');
+            } catch (dbErr) {
+                console.error('⚠️ Advertencia en inicialización de base de datos:', dbErr.message);
+            }
         }
     })
     .catch(err => {
@@ -44,7 +105,7 @@ async function createBackup() {
         const pool = await sql.connect(dbConfig);
         const dateStr = new Date().toISOString().replace(/[:.]/g, '-');
         const backupPath = path.join(backupDir, `backup_${dateStr}.bak`);
-        
+
         // Ejecutar query de backup en SQL Server
         const query = `BACKUP DATABASE [inventario_multiplataforma] TO DISK = '${backupPath}' WITH FORMAT, INIT, NAME = 'Full Backup de inventario_multiplataforma';`;
         await pool.request().query(query);
@@ -61,7 +122,7 @@ setInterval(() => {
     const now = new Date();
     if (now.getHours() === 2 && now.getMinutes() === 0) {
         console.log('⏰ Iniciando respaldo automático diario...');
-        createBackup().catch(() => {});
+        createBackup().catch(() => { });
     }
 }, 60 * 1000);
 
@@ -138,7 +199,7 @@ app.post('/api/auth/register', async (req, res) => {
     const { name, email, password } = req.body;
     try {
         const pool = await sql.connect(dbConfig);
-        
+
         // Verificar si ya existe
         const checkUser = await pool.request()
             .input('email', sql.NVarChar, email)
@@ -174,7 +235,7 @@ app.post('/api/auth/update-password', async (req, res) => {
     const { userId, currentPassword, newPassword } = req.body;
     try {
         const pool = await sql.connect(dbConfig);
-        
+
         // Verificar contraseña actual
         const checkUser = await pool.request()
             .input('id', sql.BigInt, parseInt(userId))
@@ -197,6 +258,179 @@ app.post('/api/auth/update-password', async (req, res) => {
     }
 });
 
+// Guardar Foto de Perfil del Usuario
+function saveProfileImage(userId, base64Image) {
+    if (!base64Image) return null;
+
+    const rootDir = 'C:\\Users\\aldo1\\Documents\\InventarioAPP';
+    const folderName = `perfil_${userId}`;
+    const profileDir = path.join(rootDir, folderName);
+
+    // Create directory if not exists
+    if (!fs.existsSync(profileDir)) {
+        fs.mkdirSync(profileDir, { recursive: true });
+    }
+
+    // Delete previous images in profileDir
+    try {
+        const files = fs.readdirSync(profileDir);
+        for (const file of files) {
+            fs.unlinkSync(path.join(profileDir, file));
+        }
+    } catch (e) {
+        console.error("Error clearing profile directory:", e);
+    }
+
+    // Determine mime type and extension
+    let ext = 'jpg';
+    let base64Data = base64Image;
+    if (base64Image.includes(';base64,')) {
+        const parts = base64Image.split(';base64,');
+        const mime = parts[0];
+        base64Data = parts[1];
+        if (mime.includes('png')) ext = 'png';
+        else if (mime.includes('jpeg')) ext = 'jpeg';
+        else if (mime.includes('gif')) ext = 'gif';
+    }
+
+    const filename = `photo_${Date.now()}.${ext}`;
+    const filePath = path.join(profileDir, filename);
+
+    fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
+
+    return filePath;
+}
+
+// Endpoint para actualizar información de perfil
+app.post('/api/auth/update-profile', async (req, res) => {
+    const { userId, name, base64Image } = req.body;
+    try {
+        const pool = await sql.connect(dbConfig);
+
+        let savedImagePath = null;
+        if (base64Image) {
+            savedImagePath = saveProfileImage(userId, base64Image);
+        }
+
+        let query = 'UPDATE users SET name = @name';
+        if (savedImagePath) {
+            query += ', profile_image_url = @profileImageUrl';
+        }
+        query += ' WHERE id = @id';
+
+        const request = pool.request()
+            .input('id', sql.BigInt, parseInt(userId))
+            .input('name', sql.NVarChar, name);
+
+        if (savedImagePath) {
+            request.input('profileImageUrl', sql.NVarChar, savedImagePath);
+        }
+
+        await request.query(query);
+
+        // Obtener usuario actualizado
+        const getUpdatedQuery = 'SELECT id, name, email, role, profile_image_url FROM users WHERE id = @id';
+        const updatedResult = await pool.request()
+            .input('id', sql.BigInt, parseInt(userId))
+            .query(getUpdatedQuery);
+
+        if (updatedResult.recordset.length > 0) {
+            const user = updatedResult.recordset[0];
+            res.json({
+                user: {
+                    id: user.id.toString(),
+                    name: user.name,
+                    email: user.email,
+                    role: user.role,
+                    profileImageUrl: user.profile_image_url
+                }
+            });
+        } else {
+            res.status(404).json({ message: 'Usuario no encontrado tras la actualización.' });
+        }
+    } catch (err) {
+        res.status(500).json({ message: 'Error al actualizar perfil.', error: err.message });
+    }
+});
+
+// Guardar Logo de la Empresa
+function saveCompanyLogo(base64Image) {
+    if (!base64Image) return null;
+
+    const rootDir = 'C:\\Users\\aldo1\\Documents\\InventarioAPP';
+    const folderName = 'logo';
+    const logoDir = path.join(rootDir, folderName);
+
+    // Create directory if not exists
+    if (!fs.existsSync(logoDir)) {
+        fs.mkdirSync(logoDir, { recursive: true });
+    }
+
+    // Delete previous images in logoDir
+    try {
+        const files = fs.readdirSync(logoDir);
+        for (const file of files) {
+            fs.unlinkSync(path.join(logoDir, file));
+        }
+    } catch (e) {
+        console.error("Error clearing logo directory:", e);
+    }
+
+    // Determine mime type and extension
+    let ext = 'png';
+    let base64Data = base64Image;
+    if (base64Image.includes(';base64,')) {
+        const parts = base64Image.split(';base64,');
+        const mime = parts[0];
+        base64Data = parts[1];
+        if (mime.includes('png')) ext = 'png';
+        else if (mime.includes('jpeg') || mime.includes('jpg')) ext = 'jpg';
+        else if (mime.includes('gif')) ext = 'gif';
+    }
+
+    const filename = `logo_${Date.now()}.${ext}`;
+    const filePath = path.join(logoDir, filename);
+
+    fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
+
+    return filePath;
+}
+
+// Endpoint para obtener el logo actual de la empresa
+app.get('/api/logo', (req, res) => {
+    const logoDir = 'C:\\Users\\aldo1\\Documents\\InventarioAPP\\logo';
+    if (!fs.existsSync(logoDir)) {
+        return res.json({ logoUrl: null });
+    }
+
+    try {
+        const files = fs.readdirSync(logoDir);
+        if (files.length > 0) {
+            res.json({ logoUrl: `logo/${files[0]}` });
+        } else {
+            res.json({ logoUrl: null });
+        }
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Endpoint para subir o actualizar el logo de la empresa
+app.post('/api/logo', (req, res) => {
+    const { base64Image } = req.body;
+    try {
+        const savedPath = saveCompanyLogo(base64Image);
+        if (savedPath) {
+            const filename = path.basename(savedPath);
+            res.json({ success: true, logoUrl: `logo/${filename}` });
+        } else {
+            res.status(400).json({ message: 'No se recibió ninguna imagen.' });
+        }
+    } catch (err) {
+        res.status(500).json({ message: 'Error al guardar el logo.', error: err.message });
+    }
+});
+
 // ==========================================
 // ENDPOINTS DE AUXILIARES (Almacenes, Proveedores, Clientes)
 // ==========================================
@@ -205,9 +439,9 @@ app.get('/api/warehouses', async (req, res) => {
     try {
         const pool = await sql.connect(dbConfig);
         const result = await pool.request().query('SELECT id, name, location, created_at FROM warehouses');
-        res.json(result.recordset.map(w => ({ 
-            id: w.id.toString(), 
-            name: w.name, 
+        res.json(result.recordset.map(w => ({
+            id: w.id.toString(),
+            name: w.name,
             location: w.location,
             createdAt: w.created_at
         })));
@@ -225,7 +459,7 @@ app.post('/api/warehouses', async (req, res) => {
             .input('name', sql.NVarChar, name)
             .input('location', sql.NVarChar, location || '')
             .query('INSERT INTO warehouses (name, location) OUTPUT INSERTED.id, INSERTED.name, INSERTED.location, INSERTED.created_at VALUES (@name, @location)');
-        
+
         const w = result.recordset[0];
         res.json({
             id: w.id.toString(),
@@ -249,7 +483,7 @@ app.put('/api/warehouses/:id', async (req, res) => {
             .input('name', sql.NVarChar, name)
             .input('location', sql.NVarChar, location || '')
             .query('UPDATE warehouses SET name = @name, location = @location WHERE id = @id');
-        
+
         res.json({ message: 'Almacén actualizado exitosamente.' });
     } catch (err) {
         res.status(500).json({ message: 'Error al actualizar almacén.', error: err.message });
@@ -264,7 +498,7 @@ app.delete('/api/warehouses/:id', async (req, res) => {
         await pool.request()
             .input('id', sql.BigInt, parseInt(id))
             .query('DELETE FROM warehouses WHERE id = @id');
-            
+
         res.json({ message: 'Almacén eliminado exitosamente.' });
     } catch (err) {
         res.status(500).json({ message: 'Error al eliminar almacén.', error: err.message });
@@ -276,7 +510,7 @@ app.get('/api/warehouses/:id/inventory', async (req, res) => {
     const { id } = req.params;
     try {
         const pool = await sql.connect(dbConfig);
-        
+
         const query = `
             SELECT 
                 p.id,
@@ -307,11 +541,11 @@ app.get('/api/warehouses/:id/inventory', async (req, res) => {
             FROM products p
             LEFT JOIN categories c ON p.category_id = c.id
         `;
-        
+
         const result = await pool.request()
             .input('warehouseId', sql.BigInt, parseInt(id))
             .query(query);
-            
+
         const products = result.recordset.map(p => ({
             id: p.id.toString(),
             sku: p.sku,
@@ -326,7 +560,7 @@ app.get('/api/warehouses/:id/inventory', async (req, res) => {
             imageUrl: p.imageUrl,
             unitMeasure: p.unitMeasure || 'Unidad'
         }));
-        
+
         res.json(products);
     } catch (err) {
         res.status(500).json({ message: 'Error al obtener inventario del almacén.', error: err.message });
@@ -353,7 +587,7 @@ app.post('/api/suppliers', async (req, res) => {
             .input('name', sql.NVarChar, name)
             .input('contactInfo', sql.NVarChar, contactInfo || '')
             .query('INSERT INTO suppliers (name, contact_info) OUTPUT INSERTED.id, INSERTED.name, INSERTED.contact_info VALUES (@name, @contactInfo)');
-        
+
         const s = result.recordset[0];
         res.json({
             id: s.id.toString(),
@@ -376,7 +610,7 @@ app.put('/api/suppliers/:id', async (req, res) => {
             .input('name', sql.NVarChar, name)
             .input('contactInfo', sql.NVarChar, contactInfo || '')
             .query('UPDATE suppliers SET name = @name, contact_info = @contactInfo WHERE id = @id');
-        
+
         res.json({ message: 'Proveedor actualizado exitosamente.' });
     } catch (err) {
         res.status(500).json({ message: 'Error al actualizar proveedor.', error: err.message });
@@ -391,7 +625,7 @@ app.delete('/api/suppliers/:id', async (req, res) => {
         await pool.request()
             .input('id', sql.BigInt, parseInt(id))
             .query('DELETE FROM suppliers WHERE id = @id');
-            
+
         res.json({ message: 'Proveedor eliminado exitosamente.' });
     } catch (err) {
         res.status(500).json({ message: 'Error al eliminar proveedor.', error: err.message });
@@ -406,6 +640,60 @@ app.get('/api/customers', async (req, res) => {
         res.json(result.recordset.map(c => ({ id: c.id.toString(), name: c.name, taxId: c.tax_id })));
     } catch (err) {
         res.status(500).json({ message: err.message });
+    }
+});
+
+// Crear cliente
+app.post('/api/customers', async (req, res) => {
+    const { name, taxId } = req.body;
+    try {
+        const pool = await sql.connect(dbConfig);
+        const result = await pool.request()
+            .input('name', sql.NVarChar, name)
+            .input('taxId', sql.NVarChar, taxId || 'N/D')
+            .query('INSERT INTO customers (name, tax_id) OUTPUT INSERTED.id, INSERTED.name, INSERTED.tax_id VALUES (@name, @taxId)');
+
+        const c = result.recordset[0];
+        res.json({
+            id: c.id.toString(),
+            name: c.name,
+            taxId: c.tax_id
+        });
+    } catch (err) {
+        res.status(500).json({ message: 'Error al crear cliente.', error: err.message });
+    }
+});
+
+// Actualizar cliente
+app.put('/api/customers/:id', async (req, res) => {
+    const { id } = req.params;
+    const { name, taxId } = req.body;
+    try {
+        const pool = await sql.connect(dbConfig);
+        await pool.request()
+            .input('id', sql.BigInt, parseInt(id))
+            .input('name', sql.NVarChar, name)
+            .input('taxId', sql.NVarChar, taxId || 'N/D')
+            .query('UPDATE customers SET name = @name, tax_id = @taxId WHERE id = @id');
+
+        res.json({ message: 'Cliente actualizado exitosamente.' });
+    } catch (err) {
+        res.status(500).json({ message: 'Error al actualizar cliente.', error: err.message });
+    }
+});
+
+// Eliminar cliente
+app.delete('/api/customers/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const pool = await sql.connect(dbConfig);
+        await pool.request()
+            .input('id', sql.BigInt, parseInt(id))
+            .query('DELETE FROM customers WHERE id = @id');
+
+        res.json({ message: 'Cliente eliminado exitosamente.' });
+    } catch (err) {
+        res.status(500).json({ message: 'Error al eliminar cliente.', error: err.message });
     }
 });
 
@@ -435,7 +723,7 @@ app.get('/api/products', async (req, res) => {
             LEFT JOIN categories c ON p.category_id = c.id
         `;
         const result = await pool.request().query(query);
-        
+
         const products = result.recordset.map(p => ({
             id: p.id.toString(),
             sku: p.sku,
@@ -450,27 +738,70 @@ app.get('/api/products', async (req, res) => {
             imageUrl: p.image_url,
             unitMeasure: p.unit_measure || 'Unidad'
         }));
-        
+
         res.json(products);
     } catch (err) {
         res.status(500).json({ message: 'Error al obtener productos.', error: err.message });
     }
 });
 
+function saveProductImage(productNameOrSku, base64Image) {
+    if (!base64Image) return null;
+
+    const rootDir = 'C:\\Users\\aldo1\\Documents\\InventarioAPP';
+    // Clean folder name to prevent illegal file system chars
+    const folderName = productNameOrSku.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const productDir = path.join(rootDir, folderName);
+
+    // Create directory if not exists
+    if (!fs.existsSync(productDir)) {
+        fs.mkdirSync(productDir, { recursive: true });
+    }
+
+    // Delete previous images in productDir
+    try {
+        const files = fs.readdirSync(productDir);
+        for (const file of files) {
+            fs.unlinkSync(path.join(productDir, file));
+        }
+    } catch (e) {
+        console.error("Error clearing directory:", e);
+    }
+
+    // Determine mime type and extension
+    let ext = 'jpg';
+    let base64Data = base64Image;
+    if (base64Image.includes(';base64,')) {
+        const parts = base64Image.split(';base64,');
+        const mime = parts[0];
+        base64Data = parts[1];
+        if (mime.includes('png')) ext = 'png';
+        else if (mime.includes('jpeg')) ext = 'jpeg';
+        else if (mime.includes('gif')) ext = 'gif';
+    }
+
+    const filename = `photo_${Date.now()}.${ext}`;
+    const filePath = path.join(productDir, filename);
+
+    fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
+
+    return filePath;
+}
+
 // Crear producto
 app.post('/api/products', async (req, res) => {
-    const { name, description, price, stock, category, sku, purchasePrice, taxPercentage, minStock, unitMeasure } = req.body;
+    const { name, description, price, stock, category, sku, purchasePrice, taxPercentage, minStock, unitMeasure, base64Image } = req.body;
     try {
         const pool = await sql.connect(dbConfig);
 
         const finalSku = sku || `PROD-${Date.now().toString().slice(-6)}`;
-        
+
         let categoryId = 1;
         if (category) {
             const catResult = await pool.request()
                 .input('catName', sql.NVarChar, category)
                 .query('SELECT id FROM categories WHERE name = @catName');
-            
+
             if (catResult.recordset.length > 0) {
                 categoryId = catResult.recordset[0].id;
             } else {
@@ -481,18 +812,24 @@ app.post('/api/products', async (req, res) => {
             }
         }
 
+        // Handle Image upload if base64Image is present
+        let savedImagePath = null;
+        if (base64Image) {
+            savedImagePath = saveProductImage(finalSku, base64Image);
+        }
+
         const query = `
             INSERT INTO products (
                 sku, name, description, category_id, purchase_price, sale_price, 
-                tax_percentage, unit_measure, stock, min_stock
+                tax_percentage, unit_measure, stock, min_stock, image_url
             ) 
             OUTPUT 
                 INSERTED.id, INSERTED.sku, INSERTED.name, INSERTED.description, 
                 INSERTED.purchase_price, INSERTED.sale_price, INSERTED.tax_percentage, 
-                INSERTED.unit_measure, INSERTED.stock, INSERTED.min_stock
+                INSERTED.unit_measure, INSERTED.stock, INSERTED.min_stock, INSERTED.image_url
             VALUES (
                 @sku, @name, @description, @categoryId, @purchasePrice, @salePrice, 
-                @taxPercentage, @unitMeasure, @stock, @minStock
+                @taxPercentage, @unitMeasure, @stock, @minStock, @imageUrl
             )
         `;
 
@@ -507,6 +844,7 @@ app.post('/api/products', async (req, res) => {
             .input('unitMeasure', sql.NVarChar, unitMeasure || 'Unidad')
             .input('stock', sql.Int, stock || 0)
             .input('minStock', sql.Int, minStock !== undefined ? minStock : 0)
+            .input('imageUrl', sql.NVarChar, savedImagePath)
             .query(query);
 
         const p = result.recordset[0];
@@ -529,6 +867,126 @@ app.post('/api/products', async (req, res) => {
     }
 });
 
+// Actualizar producto (Editar)
+app.put('/api/products/:id', async (req, res) => {
+    const { id } = req.params;
+    const { name, description, price, stock, category, sku, purchasePrice, taxPercentage, minStock, unitMeasure, base64Image } = req.body;
+    try {
+        const pool = await sql.connect(dbConfig);
+
+        let categoryId = 1;
+        if (category) {
+            const catResult = await pool.request()
+                .input('catName', sql.NVarChar, category)
+                .query('SELECT id FROM categories WHERE name = @catName');
+
+            if (catResult.recordset.length > 0) {
+                categoryId = catResult.recordset[0].id;
+            } else {
+                const newCat = await pool.request()
+                    .input('catName', sql.NVarChar, category)
+                    .query('INSERT INTO categories (name) OUTPUT INSERTED.id VALUES (@catName)');
+                categoryId = newCat.recordset[0].id;
+            }
+        }
+
+        // Handle Image upload if base64Image is present
+        let savedImagePath = null;
+        if (base64Image) {
+            savedImagePath = saveProductImage(sku || name, base64Image);
+        }
+
+        let query = `
+            UPDATE products 
+            SET 
+                name = @name,
+                description = @description,
+                category_id = @categoryId,
+                purchase_price = @purchasePrice,
+                sale_price = @salePrice,
+                tax_percentage = @taxPercentage,
+                unit_measure = @unitMeasure,
+                stock = @stock,
+                min_stock = @minStock
+        `;
+
+        if (sku) {
+            query += `, sku = @sku`;
+        }
+        if (savedImagePath) {
+            query += `, image_url = @imageUrl`;
+        }
+
+        query += ` WHERE id = @id`;
+
+        const request = pool.request()
+            .input('id', sql.BigInt, parseInt(id))
+            .input('name', sql.NVarChar, name)
+            .input('description', sql.NVarChar, description || '')
+            .input('categoryId', sql.BigInt, categoryId)
+            .input('purchasePrice', sql.Decimal(18, 2), purchasePrice !== undefined ? purchasePrice : ((price * 0.7) || 0.0))
+            .input('salePrice', sql.Decimal(18, 2), price || 0.0)
+            .input('taxPercentage', sql.Decimal(5, 2), taxPercentage !== undefined ? taxPercentage : 13.0)
+            .input('unitMeasure', sql.NVarChar, unitMeasure || 'Unidad')
+            .input('stock', sql.Int, stock || 0)
+            .input('minStock', sql.Int, minStock !== undefined ? minStock : 0);
+
+        if (sku) {
+            request.input('sku', sql.NVarChar, sku);
+        }
+        if (savedImagePath) {
+            request.input('imageUrl', sql.NVarChar, savedImagePath);
+        }
+
+        await request.query(query);
+
+        // Obtener el producto completo actualizado para responderle al frontend
+        const getUpdatedQuery = `
+            SELECT 
+                p.id, 
+                p.sku,
+                p.name, 
+                p.description, 
+                p.purchase_price, 
+                p.sale_price, 
+                p.tax_percentage, 
+                p.unit_measure, 
+                p.stock, 
+                p.min_stock,
+                p.image_url,
+                c.name AS category
+            FROM products p
+            LEFT JOIN categories c ON p.category_id = c.id
+            WHERE p.id = @id
+        `;
+        const updatedResult = await pool.request()
+            .input('id', sql.BigInt, parseInt(id))
+            .query(getUpdatedQuery);
+
+        if (updatedResult.recordset.length > 0) {
+            const p = updatedResult.recordset[0];
+            res.json({
+                id: p.id.toString(),
+                sku: p.sku,
+                name: p.name,
+                description: p.description,
+                price: parseFloat(p.sale_price),
+                purchasePrice: p.purchase_price != null ? parseFloat(p.purchase_price) : 0.0,
+                taxPercentage: p.tax_percentage != null ? parseFloat(p.tax_percentage) : 0.0,
+                stock: parseInt(p.stock),
+                minStock: p.min_stock != null ? parseInt(p.min_stock) : 0,
+                category: p.category || 'General',
+                imageUrl: p.image_url,
+                unitMeasure: p.unit_measure || 'Unidad'
+            });
+        } else {
+            res.status(404).json({ message: 'Producto no encontrado tras la actualización.' });
+        }
+    } catch (err) {
+        res.status(500).json({ message: 'Error al actualizar producto.', error: err.message });
+    }
+});
+
 // Eliminar producto
 app.delete('/api/products/:id', async (req, res) => {
     const { id } = req.params;
@@ -537,7 +995,7 @@ app.delete('/api/products/:id', async (req, res) => {
         await pool.request()
             .input('id', sql.BigInt, parseInt(id))
             .query('DELETE FROM products WHERE id = @id');
-            
+
         res.json({ message: 'Producto eliminado exitosamente.' });
     } catch (err) {
         res.status(500).json({ message: 'Error al eliminar producto.', error: err.message });
@@ -549,13 +1007,15 @@ app.get('/api/products/:id/kardex', async (req, res) => {
     const { id } = req.params;
     try {
         const pool = await sql.connect(dbConfig);
-        
+
         const query = `
             SELECT 
+                t.id AS transactionId,
                 t.transaction_date AS date,
                 t.type AS type,
                 i.quantity AS quantity,
                 i.unit_price AS unitPrice,
+                i.lot_id AS lotId,
                 u.name AS userName,
                 t.observations AS observations,
                 w1.name AS originWarehouseName,
@@ -568,11 +1028,11 @@ app.get('/api/products/:id/kardex', async (req, res) => {
             WHERE i.product_id = @productId
             ORDER BY t.transaction_date ASC
         `;
-        
+
         const result = await pool.request()
             .input('productId', sql.BigInt, parseInt(id))
             .query(query);
-            
+
         let runningStock = 0;
         const kardex = result.recordset.map(item => {
             const qty = parseInt(item.quantity);
@@ -581,12 +1041,14 @@ app.get('/api/products/:id/kardex', async (req, res) => {
             } else if (item.type === 'SALIDA') {
                 runningStock -= qty;
             }
-            
+
             return {
+                transactionId: item.transactionId ? item.transactionId.toString() : null,
                 date: item.date,
                 type: item.type,
                 quantity: qty,
                 unitPrice: parseFloat(item.unitPrice),
+                lotId: item.lotId ? item.lotId.toString() : null,
                 runningStock: runningStock,
                 userName: item.userName,
                 observations: item.observations || '',
@@ -594,10 +1056,160 @@ app.get('/api/products/:id/kardex', async (req, res) => {
                 destinationWarehouseName: item.destinationWarehouseName || null
             };
         });
-        
+
         res.json(kardex);
     } catch (err) {
         res.status(500).json({ message: 'Error al obtener Kardex del producto.', error: err.message });
+    }
+});
+
+
+// Obtener todos los lotes de un producto (Soporta filtro por status = 'active' o 'depleted')
+app.get('/api/products/:id/lots', async (req, res) => {
+    const { id } = req.params;
+    const { status } = req.query;
+    try {
+        const pool = await sql.connect(dbConfig);
+        let query = `
+            SELECT 
+                pl.id,
+                pl.product_id AS productId,
+                pl.transaction_id AS transactionId,
+                pl.warehouse_id AS warehouseId,
+                w.name AS warehouseName,
+                pl.entry_date AS entryDate,
+                pl.initial_quantity AS initialQuantity,
+                pl.available_quantity AS availableQuantity,
+                pl.unit_cost AS unitCost,
+                t.type AS originTransactionType,
+                t.observations AS originObservations
+            FROM product_lots pl
+            INNER JOIN warehouses w ON pl.warehouse_id = w.id
+            LEFT JOIN inventory_transactions t ON pl.transaction_id = t.id
+            WHERE pl.product_id = @productId
+        `;
+
+        if (status === 'active') {
+            query += ' AND pl.available_quantity > 0';
+        } else if (status === 'depleted') {
+            query += ' AND pl.available_quantity = 0';
+        }
+
+        query += ' ORDER BY pl.entry_date ASC, pl.id ASC';
+
+        const result = await pool.request()
+            .input('productId', sql.BigInt, parseInt(id))
+            .query(query);
+
+        res.json(result.recordset.map(row => ({
+            id: row.id.toString(),
+            productId: row.productId.toString(),
+            transactionId: row.transactionId ? row.transactionId.toString() : null,
+            warehouseId: row.warehouseId.toString(),
+            warehouseName: row.warehouseName,
+            entryDate: row.entryDate,
+            initialQuantity: parseInt(row.initialQuantity),
+            availableQuantity: parseInt(row.availableQuantity),
+            unitCost: parseFloat(row.unitCost),
+            originTransactionType: row.originTransactionType || 'Semilla / Inicial',
+            originObservations: row.originObservations || 'Stock inicial de compatibilidad'
+        })));
+    } catch (err) {
+        res.status(500).json({ message: 'Error al obtener lotes del producto.', error: err.message });
+    }
+});
+
+// Obtener el detalle PEPS (desglose de consumo de lotes) de una transacción registrada
+app.get('/api/transactions/:id/fifo-detail', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const pool = await sql.connect(dbConfig);
+        const query = `
+            SELECT 
+                ti.id,
+                ti.lot_id AS lotId,
+                ti.quantity,
+                ti.unit_price AS unitPrice,
+                pl.entry_date AS lotEntryDate,
+                p.name AS productName,
+                p.sku AS productSku
+            FROM transaction_items ti
+            LEFT JOIN product_lots pl ON ti.lot_id = pl.id
+            INNER JOIN products p ON ti.product_id = p.id
+            WHERE ti.transaction_id = @transactionId AND ti.lot_id IS NOT NULL
+            ORDER BY ti.id ASC
+        `;
+
+        const result = await pool.request()
+            .input('transactionId', sql.BigInt, parseInt(id))
+            .query(query);
+
+        res.json(result.recordset.map(row => ({
+            id: row.id.toString(),
+            lotId: row.lotId.toString(),
+            quantity: parseInt(row.quantity),
+            unitPrice: parseFloat(row.unitPrice),
+            lotEntryDate: row.lotEntryDate,
+            productName: row.productName,
+            productSku: row.productSku
+        })));
+    } catch (err) {
+        res.status(500).json({ message: 'Error al obtener detalle PEPS de la transacción.', error: err.message });
+    }
+});
+
+// Obtener proyección de consumo PEPS en tiempo real (Vista Previa de Salidas)
+app.get('/api/products/:id/lots/preview-peps', async (req, res) => {
+    const { id } = req.params;
+    const { qty, warehouseId } = req.query;
+
+    if (!qty || !warehouseId) {
+        return res.status(400).json({ message: 'Debe proporcionar la cantidad (qty) y el almacén (warehouseId).' });
+    }
+
+    try {
+        const pool = await sql.connect(dbConfig);
+        const query = `
+            SELECT id, available_quantity, unit_cost, entry_date
+            FROM product_lots
+            WHERE product_id = @productId AND warehouse_id = @warehouseId AND available_quantity > 0
+            ORDER BY entry_date ASC, id ASC
+        `;
+
+        const result = await pool.request()
+            .input('productId', sql.BigInt, parseInt(id))
+            .input('warehouseId', sql.BigInt, parseInt(warehouseId))
+            .query(query);
+
+        const lots = result.recordset;
+        const targetQty = parseInt(qty);
+        let remainingQty = targetQty;
+        const breakdown = [];
+        let totalValuation = 0.00;
+
+        for (let lot of lots) {
+            if (remainingQty <= 0) break;
+            const take = Math.min(lot.available_quantity, remainingQty);
+            breakdown.push({
+                lotId: lot.id.toString(),
+                quantity: take,
+                unitCost: parseFloat(lot.unit_cost),
+                entryDate: lot.entry_date
+            });
+            remainingQty -= take;
+            totalValuation += take * parseFloat(lot.unit_cost);
+        }
+
+        res.json({
+            productId: id,
+            requestedQuantity: targetQty,
+            satisfied: remainingQty === 0,
+            remainingQuantity: remainingQty,
+            totalCost: totalValuation,
+            breakdown: breakdown
+        });
+    } catch (err) {
+        res.status(500).json({ message: 'Error al calcular proyección PEPS.', error: err.message });
     }
 });
 
@@ -609,10 +1221,10 @@ app.get('/api/products/:id/kardex', async (req, res) => {
 app.get('/api/transactions', async (req, res) => {
     try {
         const pool = await sql.connect(dbConfig);
-        
+
         const txQuery = `
             SELECT 
-                t.id, t.type, t.transaction_date, t.total_amount, t.observations,
+                t.id, t.type, t.transaction_date, t.total_amount, t.observations, t.reason,
                 w.name AS warehouse_name,
                 s.name AS supplier_name,
                 c.name AS customer_name,
@@ -625,7 +1237,7 @@ app.get('/api/transactions', async (req, res) => {
             ORDER BY t.transaction_date DESC
         `;
         const txResult = await pool.request().query(txQuery);
-        
+
         const transactions = [];
         for (let tx of txResult.recordset) {
             const itemsQuery = `
@@ -639,13 +1251,14 @@ app.get('/api/transactions', async (req, res) => {
             const itemsResult = await pool.request()
                 .input('txId', sql.BigInt, tx.id)
                 .query(itemsQuery);
-                
+
             transactions.push({
                 id: tx.id.toString(),
                 type: tx.type,
                 transactionDate: tx.transaction_date,
                 totalAmount: parseFloat(tx.total_amount),
                 observations: tx.observations,
+                reason: tx.reason || 'Venta',
                 warehouseName: tx.warehouse_name,
                 supplierName: tx.supplier_name || 'Consumo Interno',
                 customerName: tx.customer_name || 'General',
@@ -660,17 +1273,17 @@ app.get('/api/transactions', async (req, res) => {
                 }))
             });
         }
-        
+
         res.json(transactions);
     } catch (err) {
         res.status(500).json({ message: 'Error al obtener transacciones.', error: err.message });
     }
 });
 
-// Registrar nueva Transacción (Entrada/Salida) y actualizar Stock (ACID Transaccional)
+// Registrar nueva Transacción (Entrada/Salida) y actualizar Stock (ACID Transaccional con PEPS)
 app.post('/api/transactions', async (req, res) => {
-    const { type, warehouseId, supplierId, customerId, observations, items, userId } = req.body;
-    
+    const { type, warehouseId, supplierId, customerId, observations, items, userId, reason } = req.body;
+
     if (!items || items.length === 0) {
         return res.status(400).json({ message: 'Debe agregar al menos un producto a la transacción.' });
     }
@@ -681,17 +1294,14 @@ app.post('/api/transactions', async (req, res) => {
     try {
         await transaction.begin();
 
-        // 1. Calcular total_amount
-        const totalAmount = items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
-
-        // 2. Insertar en inventory_transactions
+        // 1. Insertar cabecera en inventory_transactions con total_amount temporal en 0.00
         const txInsertQuery = `
             INSERT INTO inventory_transactions (
-                type, warehouse_id, supplier_id, customer_id, total_amount, observations, user_id
+                type, warehouse_id, supplier_id, customer_id, total_amount, observations, user_id, reason
             )
             OUTPUT INSERTED.id
             VALUES (
-                @type, @warehouseId, @supplierId, @customerId, @totalAmount, @observations, @userId
+                @type, @warehouseId, @supplierId, @customerId, 0.00, @observations, @userId, @reason
             )
         `;
 
@@ -701,42 +1311,134 @@ app.post('/api/transactions', async (req, res) => {
             .input('warehouseId', sql.BigInt, parseInt(warehouseId))
             .input('supplierId', sql.BigInt, supplierId ? parseInt(supplierId) : null)
             .input('customerId', sql.BigInt, customerId ? parseInt(customerId) : null)
-            .input('totalAmount', sql.Decimal(18, 2), totalAmount)
             .input('observations', sql.NVarChar, observations || '')
             .input('userId', sql.BigInt, userId ? parseInt(userId) : 1) // default admin
+            .input('reason', sql.NVarChar, reason || 'Venta')
             .query(txInsertQuery);
 
         const transactionId = txResult.recordset[0].id;
+        let totalValuation = 0.00;
 
-        // 3. Insertar Items y actualizar Stock de cada producto
+        // 2. Procesar cada Item con PEPS/FIFO
         for (let item of items) {
-            const itemRequest = new sql.Request(transaction);
-            
-            // Insertar item
-            await itemRequest
-                .input('txId', sql.BigInt, transactionId)
-                .input('productId', sql.BigInt, parseInt(item.productId))
-                .input('quantity', sql.Int, parseInt(item.quantity))
-                .input('unitPrice', sql.Decimal(18, 2), parseFloat(item.unitPrice))
-                .query('INSERT INTO transaction_items (transaction_id, product_id, quantity, unit_price) VALUES (@txId, @productId, @quantity, @unitPrice)');
+            const productId = parseInt(item.productId);
+            const qty = parseInt(item.quantity);
+            const unitPrice = parseFloat(item.unitPrice);
 
-            // Actualizar stock del producto
-            const stockRequest = new sql.Request(transaction);
-            const stockOperator = type === 'ENTRADA' ? '+' : '-';
-            
-            await stockRequest
-                .input('productId', sql.BigInt, parseInt(item.productId))
-                .input('quantity', sql.Int, parseInt(item.quantity))
-                .query(`UPDATE products SET stock = stock ${stockOperator} @quantity WHERE id = @productId`);
+            if (type === 'ENTRADA') {
+                // ENTRADA: Crear un nuevo lote independiente para PEPS y obtener su ID
+                const lotRequest = new sql.Request(transaction);
+                const lotResult = await lotRequest
+                    .input('txId', sql.BigInt, transactionId)
+                    .input('productId', sql.BigInt, productId)
+                    .input('warehouseId', sql.BigInt, parseInt(warehouseId))
+                    .input('quantity', sql.Int, qty)
+                    .input('unitCost', sql.Decimal(18, 2), unitPrice)
+                    .query(`
+                        INSERT INTO product_lots (product_id, transaction_id, warehouse_id, initial_quantity, available_quantity, unit_cost)
+                        OUTPUT INSERTED.id
+                        VALUES (@productId, @txId, @warehouseId, @quantity, @quantity, @unitCost)
+                    `);
+
+                const lotId = lotResult.recordset[0].id;
+
+                // ENTRADA: Registrar item de transacción enlazado al lot_id
+                const itemRequest = new sql.Request(transaction);
+                await itemRequest
+                    .input('txId', sql.BigInt, transactionId)
+                    .input('productId', sql.BigInt, productId)
+                    .input('quantity', sql.Int, qty)
+                    .input('unitPrice', sql.Decimal(18, 2), unitPrice)
+                    .input('lotId', sql.BigInt, lotId)
+                    .query('INSERT INTO transaction_items (transaction_id, product_id, quantity, unit_price, lot_id) VALUES (@txId, @productId, @quantity, @unitPrice, @lotId)');
+
+                // ENTRADA: Actualizar precio base del producto sin sobrescribir el costo de lotes históricos
+                const priceRequest = new sql.Request(transaction);
+                await priceRequest
+                    .input('productId', sql.BigInt, productId)
+                    .input('unitPrice', sql.Decimal(18, 2), unitPrice)
+                    .query('UPDATE products SET purchase_price = @unitPrice WHERE id = @productId');
+
+                // ENTRADA: Aumentar stock del producto
+                const stockRequest = new sql.Request(transaction);
+                await stockRequest
+                    .input('productId', sql.BigInt, productId)
+                    .input('quantity', sql.Int, qty)
+                    .query('UPDATE products SET stock = stock + @quantity WHERE id = @productId');
+
+                totalValuation += qty * unitPrice;
+
+            } else if (type === 'SALIDA') {
+                // SALIDA: Buscar lotes disponibles (PEPS: Ordenados por fecha y ID de forma ascendente)
+                const lotsRequest = new sql.Request(transaction);
+                const lotsResult = await lotsRequest
+                    .input('productId', sql.BigInt, productId)
+                    .input('warehouseId', sql.BigInt, parseInt(warehouseId))
+                    .query(`
+                        SELECT id, available_quantity, unit_cost 
+                        FROM product_lots 
+                        WHERE product_id = @productId AND warehouse_id = @warehouseId AND available_quantity > 0 
+                        ORDER BY entry_date ASC, id ASC
+                    `);
+
+                const lots = lotsResult.recordset;
+                const totalAvailable = lots.reduce((sum, lot) => sum + lot.available_quantity, 0);
+
+                if (totalAvailable < qty) {
+                    throw new Error(`Stock PEPS insuficiente para el producto ID ${productId}. Disponible en lotes: ${totalAvailable}, Requerido: ${qty}`);
+                }
+
+                let remainingQty = qty;
+                for (let lot of lots) {
+                    if (remainingQty <= 0) break;
+
+                    const take = Math.min(lot.available_quantity, remainingQty);
+                    const lotCost = lot.unit_cost;
+
+                    // SALIDA: Reducir cantidad disponible del lote en base de datos
+                    const deductRequest = new sql.Request(transaction);
+                    await deductRequest
+                        .input('lotId', sql.Int, lot.id)
+                        .input('take', sql.Int, take)
+                        .query('UPDATE product_lots SET available_quantity = available_quantity - @take WHERE id = @lotId');
+
+                    // SALIDA: Registrar item de transacción con el costo exacto del lote consumido y enlazado a su lot_id
+                    const itemRequest = new sql.Request(transaction);
+                    await itemRequest
+                        .input('txId', sql.BigInt, transactionId)
+                        .input('productId', sql.BigInt, productId)
+                        .input('quantity', sql.Int, take)
+                        .input('unitPrice', sql.Decimal(18, 2), lotCost)
+                        .input('lotId', sql.BigInt, lot.id)
+                        .query('INSERT INTO transaction_items (transaction_id, product_id, quantity, unit_price, lot_id) VALUES (@txId, @productId, @quantity, @unitPrice, @lotId)');
+
+                    remainingQty -= take;
+                    totalValuation += take * lotCost;
+                }
+
+                // SALIDA: Disminuir stock del producto
+                const stockRequest = new sql.Request(transaction);
+                await stockRequest
+                    .input('productId', sql.BigInt, productId)
+                    .input('quantity', sql.Int, qty)
+                    .query('UPDATE products SET stock = stock - @quantity WHERE id = @productId');
+            }
         }
 
+        // 3. Actualizar la valoración final acumulada en la cabecera de la transacción
+        const updateHeaderRequest = new sql.Request(transaction);
+        await updateHeaderRequest
+            .input('txId', sql.BigInt, transactionId)
+            .input('totalAmount', sql.Decimal(18, 2), totalValuation)
+            .query('UPDATE inventory_transactions SET total_amount = @totalAmount WHERE id = @txId');
+
         await transaction.commit();
-        res.json({ message: 'Transacción registrada con éxito.', transactionId: transactionId.toString() });
+        res.json({ message: 'Transacción registrada con éxito en sistema PEPS.', transactionId: transactionId.toString() });
 
     } catch (err) {
         await transaction.rollback();
-        console.error('Error en transacción de stock:', err);
-        res.status(500).json({ message: 'Error procesando la transacción de inventario.', error: err.message });
+        console.error('Error en transacción de stock PEPS:', err);
+        res.status(500).json({ message: 'Error procesando la transacción PEPS.', error: err.message });
     }
 });
 
@@ -762,7 +1464,7 @@ app.get('/api/transfers', async (req, res) => {
             ORDER BY t.transaction_date DESC
         `;
         const txResult = await pool.request().query(txQuery);
-        
+
         const transfers = [];
         for (let tx of txResult.recordset) {
             const itemsQuery = `
@@ -776,7 +1478,7 @@ app.get('/api/transfers', async (req, res) => {
             const itemsResult = await pool.request()
                 .input('txId', sql.BigInt, tx.id)
                 .query(itemsQuery);
-                
+
             transfers.push({
                 id: tx.id.toString(),
                 transactionDate: tx.transaction_date,
@@ -804,7 +1506,7 @@ app.get('/api/transfers', async (req, res) => {
 // Registrar nueva transferencia (Validación de Stock + ACID)
 app.post('/api/transfers', async (req, res) => {
     const { fromWarehouseId, toWarehouseId, observations, items, userId } = req.body;
-    
+
     if (parseInt(fromWarehouseId) === parseInt(toWarehouseId)) {
         return res.status(400).json({ message: 'El almacén de origen y destino no pueden ser el mismo.' });
     }
@@ -837,15 +1539,15 @@ app.post('/api/transfers', async (req, res) => {
                 .input('productId', sql.BigInt, parseInt(item.productId))
                 .input('warehouseId', sql.BigInt, parseInt(fromWarehouseId))
                 .query(stockQuery);
-                
+
             const availableStock = stockResult.recordset[0] ? parseInt(stockResult.recordset[0].stock) : 0;
             if (parseInt(item.quantity) > availableStock) {
                 const pInfo = await pool.request()
                     .input('id', sql.BigInt, parseInt(item.productId))
                     .query('SELECT name FROM products WHERE id = @id');
                 const pName = pInfo.recordset[0] ? pInfo.recordset[0].name : `ID: ${item.productId}`;
-                return res.status(400).json({ 
-                    message: `Stock insuficiente para ${pName} en el almacén de origen. Disponible: ${availableStock}, Solicitado: ${item.quantity}` 
+                return res.status(400).json({
+                    message: `Stock insuficiente para ${pName} en el almacén de origen. Disponible: ${availableStock}, Solicitado: ${item.quantity}`
                 });
             }
         }
@@ -910,7 +1612,7 @@ app.post('/api/transfers', async (req, res) => {
 // Obtener resumen analítico completo
 app.get('/api/reports/summary', async (req, res) => {
     const { startDate, endDate } = req.query;
-    
+
     // Configurar fechas por defecto si no vienen
     const start = startDate ? new Date(startDate) : new Date(new Date().setDate(new Date().getDate() - 30));
     const end = endDate ? new Date(endDate) : new Date();
@@ -925,18 +1627,20 @@ app.get('/api/reports/summary', async (req, res) => {
                 (SELECT COUNT(id) FROM products) AS totalProducts,
                 (SELECT COUNT(id) FROM warehouses) AS totalWarehouses,
                 (SELECT COUNT(id) FROM suppliers) AS totalSuppliers,
+                (SELECT COUNT(id) FROM customers) AS totalCustomers,
                 (SELECT COUNT(id) FROM inventory_transactions WHERE transaction_date BETWEEN @start AND @end) AS totalMovements
         `;
         const execSummaryRes = await pool.request()
             .input('start', sql.DateTime, start)
             .input('end', sql.DateTime, end)
             .query(execSummaryQuery);
-        
+
         const execSummary = execSummaryRes.recordset[0] || {
             totalInventoryValue: 0.0,
             totalProducts: 0,
             totalWarehouses: 0,
             totalSuppliers: 0,
+            totalCustomers: 0,
             totalMovements: 0
         };
 
@@ -963,7 +1667,7 @@ app.get('/api/reports/summary', async (req, res) => {
             .input('start', sql.DateTime, start)
             .input('end', sql.DateTime, end)
             .query(movementsVolumeQuery);
-        
+
         const movementsVolume = { ENTRADA: 0, SALIDA: 0, TRANSFERENCIA: 0 };
         movementsVolumeRes.recordset.forEach(row => {
             if (movementsVolume[row.type] !== undefined) {
@@ -1062,6 +1766,7 @@ app.get('/api/reports/summary', async (req, res) => {
                 totalProducts: parseInt(execSummary.totalProducts || 0),
                 totalWarehouses: parseInt(execSummary.totalWarehouses || 0),
                 totalSuppliers: parseInt(execSummary.totalSuppliers || 0),
+                totalCustomers: parseInt(execSummary.totalCustomers || 0),
                 totalMovements: parseInt(execSummary.totalMovements || 0)
             },
             stockDistribution: {
@@ -1091,7 +1796,7 @@ app.post('/api/reports/audit', async (req, res) => {
             .input('reportType', sql.VarChar, reportType)
             .input('exportFormat', sql.VarChar, exportFormat)
             .query('INSERT INTO report_exports_audit (user_id, report_type, export_format) VALUES (@userId, @reportType, @exportFormat)');
-        
+
         res.json({ message: 'Auditoría registrada con éxito.' });
     } catch (err) {
         res.status(500).json({ message: 'Error registrando auditoría de reportes.', error: err.message });

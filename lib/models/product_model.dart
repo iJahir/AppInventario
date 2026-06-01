@@ -6,6 +6,7 @@ class ProductModel {
   final int stock;
   final String? category;
   final String? imageUrl;
+  final String? base64Image;
   final String? sku;
   final double? purchasePrice;
   final double? taxPercentage;
@@ -20,6 +21,7 @@ class ProductModel {
     required this.stock,
     this.category,
     this.imageUrl,
+    this.base64Image,
     this.sku,
     this.purchasePrice,
     this.taxPercentage,
@@ -36,6 +38,7 @@ class ProductModel {
       stock: json['stock'] ?? 0,
       category: json['category'],
       imageUrl: json['imageUrl'],
+      base64Image: json['base64Image'],
       sku: json['sku'],
       purchasePrice: json['purchasePrice'] != null ? (json['purchasePrice'] as num).toDouble() : null,
       taxPercentage: json['taxPercentage'] != null ? (json['taxPercentage'] as num).toDouble() : null,
@@ -53,6 +56,7 @@ class ProductModel {
       'stock': stock,
       'category': category,
       'imageUrl': imageUrl,
+      'base64Image': base64Image,
       'sku': sku,
       'purchasePrice': purchasePrice,
       'taxPercentage': taxPercentage,
@@ -69,6 +73,7 @@ class ProductModel {
     int? stock,
     String? category,
     String? imageUrl,
+    String? base64Image,
     String? sku,
     double? purchasePrice,
     double? taxPercentage,
@@ -83,6 +88,7 @@ class ProductModel {
       stock: stock ?? this.stock,
       category: category ?? this.category,
       imageUrl: imageUrl ?? this.imageUrl,
+      base64Image: base64Image ?? this.base64Image,
       sku: sku ?? this.sku,
       purchasePrice: purchasePrice ?? this.purchasePrice,
       taxPercentage: taxPercentage ?? this.taxPercentage,

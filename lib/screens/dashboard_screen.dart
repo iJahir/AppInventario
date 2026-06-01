@@ -6,6 +6,8 @@ import '../providers/inventory_provider.dart';
 import '../providers/auth_provider.dart';
 import '../utils/app_colors.dart';
 import '../utils/routes.dart';
+import '../utils/db_config.dart';
+import '../services/notification_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -21,10 +23,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<ProductProvider>(context, listen: false).fetchProducts();
+      Provider.of<ProductProvider>(context, listen: false).fetchProducts().then((_) {
+        if (mounted) {
+          _triggerDailySummaryNotification();
+        }
+      });
       Provider.of<InventoryProvider>(context, listen: false).fetchTransactions();
       Provider.of<InventoryProvider>(context, listen: false).fetchConfigData();
     });
+  }
+
+  void _triggerDailySummaryNotification() async {
+    final productProvider = Provider.of<ProductProvider>(context, listen: false);
+    final outOfStockCount = productProvider.products.where((p) => p.stock == 0).length;
+    final lowStockCount = productProvider.products.where((p) => p.stock > 0 && p.stock <= (p.minStock ?? 0)).length;
+    
+    if (outOfStockCount > 0 || lowStockCount > 0) {
+      await NotificationService.showDailySummaryNotification(
+        id: 999,
+        criticalCount: lowStockCount,
+        outOfStockCount: outOfStockCount,
+      );
+    }
   }
 
   @override
@@ -208,10 +228,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  String _getProfileImageUrl(String? localPath) {
+    if (localPath == null || localPath.isEmpty) return '';
+    if (localPath.startsWith('http://') || localPath.startsWith('https://')) {
+      return localPath;
+    }
+    final cleanedPath = localPath
+        .replaceAll('C:\\Users\\aldo1\\Documents\\InventarioAPP\\', '')
+        .replaceAll('C:\\Users\\aldo1\\Documents\\InventarioAPP', '')
+        .replaceAll('\\', '/');
+    
+    final serverBase = DbConfig.apiBaseUrl.replaceAll('/api', '');
+    return '$serverBase/api/uploads/$cleanedPath';
+  }
+
   Widget _buildHeader(BuildContext context, String title, String subtitle) {
+    final user = Provider.of<AuthProvider>(context).user;
+    final imageUrl = _getProfileImageUrl(user?.profileImageUrl);
     return Row(
       children: [
-        _buildIconBox(context, Icons.inventory_2_rounded),
+        _buildLogoBox(context),
         const SizedBox(width: 15),
         Expanded(
           child: Column(
@@ -226,9 +262,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         const SizedBox(width: 12),
         _buildCircleIconButton(context, Icons.notifications_none_rounded, onTap: () => _showNotificationModal(context)),
         const SizedBox(width: 12),
-        const CircleAvatar(
+        CircleAvatar(
           radius: 22, 
-          backgroundImage: NetworkImage('https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=150&auto=format&fit=crop'),
+          backgroundColor: AppColors.moradoPrincipal.withValues(alpha: 0.2),
+          backgroundImage: imageUrl.isNotEmpty ? NetworkImage(imageUrl) : null,
+          child: imageUrl.isEmpty ? Icon(Icons.person_rounded, color: AppColors.moradoPrincipal, size: 22) : null,
         ),
       ],
     );
@@ -238,6 +276,53 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final inventoryProvider = Provider.of<InventoryProvider>(context, listen: false);
     final recentTx = inventoryProvider.transactions.take(5).toList();
 
+    // Buscar si hay algún ajuste crítico reciente (Daño o Servicio)
+    bool hasCriticalAdjustment = false;
+    String adjustmentDetail = '';
+    for (var tx in recentTx) {
+      if (tx['type'] == 'SALIDA' && (tx['reason'] == 'Daño' || tx['reason'] == 'Servicio')) {
+        hasCriticalAdjustment = true;
+        final pNames = (tx['items'] as List?)?.map((i) => i['productName']).join(', ') ?? 'Varios';
+        adjustmentDetail = 'Ajuste por ${tx['reason']}: $pNames';
+        break;
+      }
+    }
+
+    if (hasCriticalAdjustment) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: AppColors.getCardColor(context),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: Colors.orangeAccent),
+              const SizedBox(width: 10),
+              Text('Alerta de Ajuste', style: TextStyle(color: AppColors.getTextColor(context))),
+            ],
+          ),
+          content: Text(
+            'Se ha registrado un ajuste técnico en el inventario recientemente:\n\n$adjustmentDetail.\n\nPor favor revise los reportes para más detalles.',
+            style: TextStyle(color: AppColors.getSubtextColor(context)),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _openNotificationsPanel(context, recentTx, hasCriticalAdjustment, adjustmentDetail);
+              },
+              child: const Text('Ver Notificaciones', style: TextStyle(color: AppColors.moradoPrincipal)),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    _openNotificationsPanel(context, recentTx, hasCriticalAdjustment, adjustmentDetail);
+  }
+
+  void _openNotificationsPanel(BuildContext context, List<Map<String, dynamic>> recentTx, bool hasCriticalAdjustment, String adjustmentDetail) {
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
@@ -250,7 +335,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: Container(
             margin: const EdgeInsets.only(top: 80, right: 20),
             padding: const EdgeInsets.all(20),
-            width: 280,
+            width: 320,
             decoration: BoxDecoration(
               color: AppColors.getCardColor(context),
               borderRadius: BorderRadius.circular(25),
@@ -274,7 +359,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 15),
+                  if (hasCriticalAdjustment)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 15),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.orangeAccent.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.orangeAccent.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.warning_amber_rounded, color: Colors.orangeAccent, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Alerta: Se detectó un ajuste reciente.\n($adjustmentDetail)',
+                              style: const TextStyle(color: Colors.orangeAccent, fontSize: 10, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   if (recentTx.isEmpty)
                     const Text('No hay notificaciones recientes.', style: TextStyle(color: Colors.white54, fontSize: 12))
                   else
@@ -282,10 +389,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       final isEntrada = tx['type'] == 'ENTRADA';
                       final isSalida = tx['type'] == 'SALIDA';
                       final pNames = (tx['items'] as List?)?.map((i) => i['productName']).join(', ') ?? 'Varios';
-                      final title = isEntrada ? 'Entrada registrada' : (isSalida ? 'Salida registrada' : 'Transferencia');
+                      
+                      int totalQty = 0;
+                      if (tx['items'] != null && tx['items'] is List) {
+                        for (var item in tx['items']) {
+                          totalQty += (item['quantity'] as num?)?.toInt() ?? 0;
+                        }
+                      }
+                      
+                      String title = isEntrada ? 'Entrada registrada' : (isSalida ? 'Salida registrada' : 'Transferencia');
+                      if (isSalida) {
+                        final reason = tx['reason'] ?? 'Venta';
+                        title = 'Salida ($reason)';
+                      }
+                      
                       final color = isEntrada ? Colors.greenAccent : (isSalida ? Colors.orangeAccent : Colors.blueAccent);
                       final icon = isEntrada ? Icons.download_rounded : (isSalida ? Icons.upload_rounded : Icons.swap_horiz_rounded);
-                      return _notificationItem(context, icon, title, pNames, color);
+                      return _notificationItem(context, icon, title, '$pNames ($totalQty uds.)', color);
                     }),
                   const SizedBox(height: 10),
                   Center(
@@ -330,6 +450,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  String _getLogoUrl(String? relativePath) {
+    if (relativePath == null || relativePath.isEmpty) return '';
+    final serverBase = DbConfig.apiBaseUrl.replaceAll('/api', '');
+    return '$serverBase/api/uploads/$relativePath';
+  }
+
+  Widget _buildLogoBox(BuildContext context) {
+    final inventoryProvider = Provider.of<InventoryProvider>(context);
+    final logoNetworkUrl = _getLogoUrl(inventoryProvider.logoUrl);
+    return Container(
+      width: 52,
+      height: 52,
+      decoration: BoxDecoration(
+        color: AppColors.getCardColor(context),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: logoNetworkUrl.isNotEmpty
+            ? Image.network(
+                logoNetworkUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) =>
+                    Icon(Icons.inventory_2_rounded, color: AppColors.azulPrincipal, size: 28),
+              )
+            : Icon(Icons.inventory_2_rounded, color: AppColors.azulPrincipal, size: 28),
       ),
     );
   }
@@ -406,22 +557,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.15),
-                          shape: BoxShape.circle,
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.account_balance_wallet_rounded, color: Colors.white, size: 20),
                         ),
-                        child: const Icon(Icons.account_balance_wallet_rounded, color: Colors.white, size: 20),
-                      ),
-                      const SizedBox(width: 10),
-                       const Text(
-                        'Valor de Inventario (Costo)',
-                        style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600),
-                      ),
-                    ],
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Text(
+                            'Valor de Inventario (Costo)',
+                            style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -726,15 +882,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final recentTx = inventoryProvider.transactions.take(3).toList();
     for (var tx in recentTx) {
       final isEntrada = tx['type'] == 'ENTRADA';
-      final title = isEntrada ? 'Entrada registrada' : 'Salida registrada';
+      String title = isEntrada ? 'Entrada registrada' : 'Salida registrada';
+      Color itemColor = isEntrada ? Colors.greenAccent : Colors.orangeAccent;
+      
+      if (!isEntrada) {
+        final reason = tx['reason'] ?? 'Venta';
+        if (reason == 'Daño') {
+          title = 'Salida por Daño';
+          itemColor = Colors.redAccent;
+        } else if (reason == 'Servicio') {
+          title = 'Salida por Servicio';
+          itemColor = Colors.cyanAccent;
+        } else if (reason == 'Consumo') {
+          title = 'Consumo Interno';
+          itemColor = Colors.orangeAccent;
+        } else {
+          title = 'Salida por Venta';
+          itemColor = Colors.greenAccent;
+        }
+      }
+
+      int totalQty = 0;
+      if (tx['items'] != null && tx['items'] is List) {
+        for (var item in tx['items']) {
+          totalQty += (item['quantity'] as num?)?.toInt() ?? 0;
+        }
+      }
+
       final pNames = (tx['items'] as List?)?.map((i) => i['productName']).join(', ') ?? 'Varios';
       activityWidgets.add(
         _activityItem(
           context, 
           title, 
           pNames, 
-          isEntrada ? '+${tx['items']?.length ?? 0}' : '-${tx['items']?.length ?? 0}', 
-          isEntrada ? Colors.greenAccent : Colors.orangeAccent
+          isEntrada ? '+$totalQty' : '-$totalQty', 
+          itemColor
         )
       );
     }

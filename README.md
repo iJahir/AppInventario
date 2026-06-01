@@ -152,10 +152,86 @@ Usa las siguientes credenciales predeterminadas para iniciar sesión como Admini
 
 ---
 
-## 📑 Características Clave Implementadas
+## 📈 📑 Características Clave & Nivel Empresarial
 
-1. **Dashboard ERP Premium:** Panel principal con analíticas de existencias, flujo de caja transaccional, y gráficas de volumen (`fl_chart`).
-2. **Control de Almacenes Inteligente:** Pantalla de gestión de bodegas físicas con flujos transaccionales íntegros y bloqueo de auto-transferencias para evitar fraude.
-3. **Kardex Dinámico:** Historial físico-valorado acumulativo de movimientos por producto detallando entradas, salidas y auditorías.
-4. **Respaldos Automatizados Integrados:** Generación automática diaria a las 2:00 AM y panel de visualización premium de archivos `.bak` directamente en la app con opción de descarga y restauración manual.
-5. **Notificaciones y Alertas Estilo SweetAlert:** Modales interactivos con desenfoque de fondo y micro-animaciones premium ante cualquier acción.
+1. **Gestión de Lotes PEPS (FIFO) Estricto:**
+   * El sistema registra cada entrada de inventario en un lote independiente (`product_lots`), capturando fecha exacta, stock inicial, stock remanente y costo de adquisición.
+   * Las salidas fraccionan y consumen secuencialmente los lotes más antiguos disponibles. El costo histórico de adquisición no se sobreescribe ni se ve afectado por nuevas fluctuaciones de precios.
+   * El Kardex físico-valorado refleja con precisión matemática cada lote y costo unitario utilizado en cada transacción.
+2. **Dashboard ERP Premium:** Panel principal con analíticas de existencias, flujo de caja transaccional, y gráficas de volumen (`fl_chart`).
+3. **Control de Almacenes Inteligente:** Pantalla de gestión de bodegas físicas con flujos transaccionales íntegros y bloqueo de auto-transferencias para evitar fraude.
+4. **Kardex Dinámico:** Historial físico-valorado acumulativo de movimientos por producto detallando entradas, salidas y auditorías.
+5. **Respaldos Automatizados Integrados:** Generación automática diaria a las 2:00 AM y panel de visualización premium de archivos `.bak` directamente en la app con opción de descarga y restauración manual.
+6. **Notificaciones y Alertas Estilo SweetAlert:** Modales interactivos con desenfoque de fondo y micro-animaciones premium ante cualquier acción.
+
+---
+
+## 🖼️ Almacenamiento de Imágenes y Carga de Archivos
+
+Para garantizar el rendimiento óptimo de la base de datos, el sistema implementa almacenamiento de imágenes en el disco local expuesto a través de la API:
+* **Ruta de Almacenamiento Local (Backend):**
+  Las fotos de perfil de usuarios y productos se almacenan de forma organizada en el directorio local:
+  `C:\Users\aldo1\Documents\InventarioAPP`
+* **Mapeo de Rutas en Red:**
+  El backend Node.js expone y sirve esta carpeta a través del endpoint estático `/api/uploads`.
+* **Configuración en server.js:**
+  ```javascript
+  app.use('/api/uploads', express.static('C:\\Users\\aldo1\\Documents\\InventarioAPP'));
+  ```
+
+---
+
+## ⚙️ Puertos, Endpoints y Variables de Entorno
+
+### 1. API Rest (Backend)
+* **Puerto Predeterminado:** `3000` (configurable mediante la variable de entorno `PORT`).
+* **Endpoints de Entornos:**
+  * **Desarrollo (Local):** `http://localhost:3000/api`
+  * **Emulador Android:** `http://10.0.2.2:3000/api`
+  * **Producción/Staging:** Modificar la variable de entorno o la constante `apiBaseUrl` en el archivo de utilidades de Flutter (`lib/utils/db_config.dart`) para que apunte al dominio del servidor en la nube (ej. `https://api.tuempresa.com/api`).
+
+### 2. Base de Datos (SQL Server)
+* **Puerto Predeterminado:** `1433` (TCP/IP).
+* **Base de Datos:** `inventario_multiplataforma`
+* **Esquema PEPS:** Se crea automáticamente la tabla `product_lots` al levantar el backend.
+
+---
+
+## 🧪 Pruebas Automatizadas de Auditoría PEPS
+
+El proyecto incluye un script de prueba de extremo a extremo para auditar que el motor de inventario cumpla estrictamente con las reglas de negocio de Primero en Entrar, Primero en Salir.
+
+### Cómo ejecutar la suite de pruebas:
+1. Asegúrate de tener levantado tu servidor de base de datos local de SQL Server.
+2. Abre tu terminal de comandos y desplázate al directorio de backend:
+   ```bash
+   cd backend
+   ```
+3. Ejecuta la suite de pruebas automatizada:
+   ```bash
+   node test_fifo.js
+   ```
+4. El script limpiará datos de pruebas previas, creará un producto temporal, insertará entradas con distintos precios ($30, $35, $25), realizará salidas parciales y multi-lote, y comprobará que el stock global, la distribución de lotes y los costos unitarios del Kardex coincidan exactamente con la lógica PEPS.
+
+---
+
+## 💎 Características de la Versión Pro (Última Actualización)
+
+En esta nueva versión profesional, se incorporaron mejoras clave de seguridad, trazabilidad de costos y experiencia de usuario (UX):
+
+1. **Renombramiento de la Aplicación a "Inventario Pro":**
+   * Se actualizó la identidad visual y configuraciones nativas de compilación en Android, Flutter MaterialApp y pantallas principales.
+2. **Cierre Automático de Sesión por Inactividad (Seguridad Bancaria):**
+   * Se implementó un widget global `InactivityDetector` que monitorea movimientos, clics y toques del usuario.
+   * Si no hay actividad durante **5 minutos**, la sesión se cierra automáticamente de forma segura, redirigiendo a la pantalla de Login y mostrando una alerta interactiva SweetAlert.
+3. **Paginación Avanzada y Vistas Especiales:**
+   * **Kardex:** Paginado dinámicamente a **10 registros por página**.
+   * **Entradas y Salidas ("Ver Todas"):** Nuevas pantallas dedicadas (`AllEntriesScreen` y `AllOutputsScreen`) con filtros de búsqueda en tiempo real, ordenación inteligente y paginación nativa de 10 en 10.
+4. **Trazabilidad Completa de Lotes PEPS (FIFO):**
+   * Modales de detalle de transacciones ahora cargan de manera asíncrona mediante el widget `_TransactionDetailSheet` y renderizan de forma detallada qué lotes exactos fueron creados (en Entradas) o consumidos (en Salidas), eliminando problemas de carga infinita.
+5. **Edición/Eliminación Inline en Formularios de Movimiento:**
+   * En los formularios de Nueva Entrada y Nueva Salida, ahora se puede editar y eliminar cualquier producto pre-agregado en la lista antes de enviar la transacción final al servidor, evitando tener que borrar y empezar de nuevo.
+6. **Extras de Descarga de Códigos QR Autónomos:**
+   * Se eliminaron rutas hardcodeadas de emulador para guardado. La aplicación ahora implementa un resolvedor con fallbacks inteligentes usando `path_provider` (`getDownloadsDirectory()`, `getExternalStorageDirectory()`) para guardar en la carpeta física de descargas de cualquier dispositivo móvil real.
+   * Las etiquetas PDF generadas se nombran de forma limpia y profesional basándose en el producto: `[Nombre_Producto]_qr.pdf`.
+   * Se añadió un banner de instrucciones e información superior en la cámara de escaneo rápido para mejorar la usabilidad del operador.

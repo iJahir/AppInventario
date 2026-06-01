@@ -1,13 +1,24 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
+import 'dart:io';
 import 'package:provider/provider.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:local_auth/local_auth.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../utils/routes.dart';
 import '../utils/app_colors.dart';
 import '../utils/db_config.dart';
 import '../providers/theme_provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/product_provider.dart';
+import '../providers/inventory_provider.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -18,10 +29,12 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final int _selectedIndex = 4;
+  bool _biometricsEnabled = false;
 
   @override
   void initState() {
     super.initState();
+    _loadBiometricsPreference();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final role = Provider.of<AuthProvider>(context, listen: false).user?.role;
       if (role != 'ADMIN') {
@@ -29,6 +42,159 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Navigator.pushReplacementNamed(context, AppRoutes.dashboard);
       }
     });
+  }
+
+  Future<void> _loadBiometricsPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _biometricsEnabled = prefs.getBool('biometrics_enabled') ?? false;
+    });
+  }
+
+  Future<void> _toggleBiometrics(bool value) async {
+    if (value) {
+      final LocalAuthentication auth = LocalAuthentication();
+      try {
+        final bool canAuthenticateWithBiometrics = await auth.canCheckBiometrics;
+        final bool canAuthenticate = canAuthenticateWithBiometrics || await auth.isDeviceSupported();
+        
+        if (!canAuthenticate) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Este dispositivo no soporta autenticación biométrica.')),
+          );
+          return;
+        }
+        
+        final bool authenticated = await auth.authenticate(
+          localizedReason: 'Por favor autentícate para activar el acceso rápido por Biometría',
+          biometricOnly: true,
+          persistAcrossBackgrounding: true,
+        );
+        
+        if (!authenticated) return;
+
+        // Pedir al usuario su contraseña para guardarla de forma segura
+        final user = Provider.of<AuthProvider>(context, listen: false).user;
+        if (user == null) return;
+
+        final prefs = await SharedPreferences.getInstance();
+        final String? alreadySaved = prefs.getString('biometric_password');
+
+        if (alreadySaved == null || alreadySaved.isEmpty) {
+          // Solicitar contraseña al usuario para guardarla
+          final String? password = await _askUserPassword(context);
+          if (password == null || password.isEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Se requiere la contraseña para activar la biometría.'), backgroundColor: Colors.orange),
+            );
+            return;
+          }
+          await prefs.setString('biometric_email', user.email);
+          await prefs.setString('biometric_password', password);
+        } else {
+          // Actualizar el email por si cambió de usuario
+          await prefs.setString('biometric_email', user.email);
+        }
+      } catch (e) {
+        print("Error authenticating biometrics: $e");
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al verificar biometría: $e')),
+        );
+        return;
+      }
+    }
+    
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('biometrics_enabled', value);
+    if (!value) {
+      // Al desactivar, limpiar credenciales guardadas
+      await prefs.remove('biometric_email');
+      await prefs.remove('biometric_password');
+    }
+    setState(() {
+      _biometricsEnabled = value;
+    });
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(value ? 'Acceso rápido con Biometría activado.' : 'Acceso rápido con Biometría desactivado.'),
+        backgroundColor: value ? Colors.green : Colors.orange,
+      ),
+    );
+  }
+
+  /// Muestra un diálogo para que el usuario ingrese su contraseña
+  Future<String?> _askUserPassword(BuildContext context) async {
+    final TextEditingController passCtrl = TextEditingController();
+    bool obscure = true;
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (ctx, setStateDialog) {
+            return AlertDialog(
+              backgroundColor: AppColors.getCardColor(context),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              title: Row(
+                children: [
+                  const Icon(Icons.fingerprint_rounded, color: AppColors.moradoPrincipal, size: 28),
+                  const SizedBox(width: 10),
+                  Text('Confirmar Contraseña',
+                      style: TextStyle(color: AppColors.getTextColor(context), fontSize: 17, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Ingresa tu contraseña actual para habilitar el acceso biométrico. Se guardará de forma segura en este dispositivo.',
+                    style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 12),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: passCtrl,
+                    obscureText: obscure,
+                    style: TextStyle(color: AppColors.getTextColor(context)),
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: Colors.black.withValues(alpha: 0.1),
+                      prefixIcon: const Icon(Icons.lock_outline_rounded, color: AppColors.moradoPrincipal),
+                      suffixIcon: IconButton(
+                        icon: Icon(obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                            color: AppColors.getSubtextColor(context), size: 20),
+                        onPressed: () => setStateDialog(() => obscure = !obscure),
+                      ),
+                      hintText: 'Tu contraseña',
+                      hintStyle: TextStyle(color: AppColors.getSubtextColor(context)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogCtx, null),
+                  child: Text('Cancelar', style: TextStyle(color: AppColors.getSubtextColor(context))),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(dialogCtx, passCtrl.text.trim()),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.moradoPrincipal,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('Confirmar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -62,6 +228,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        _buildBusinessCard(context),
+                        const SizedBox(height: 25),
                         _buildSectionTitle('Preferencias', context),
                         const SizedBox(height: 15),
                         _buildSettingsGroup(context, [
@@ -73,6 +241,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             trailing: _buildBadge(context, isDark ? 'Oscuro' : 'Claro', isDark ? Icons.nightlight_round : Icons.wb_sunny_rounded),
                             onTap: () => themeProvider.toggleTheme(),
                           ),
+                          _buildSettingItem(
+                            context,
+                            Icons.person_outline_rounded, 
+                            'Editar Perfil', 
+                            'Cambiar nombre y foto de perfil', 
+                            onTap: () => Navigator.pushNamed(context, AppRoutes.editProfile),
+                          ),
                           _buildSettingItem(context, Icons.notifications_none_rounded, 'Notificaciones', 'Gestiona avisos', trailing: _buildSwitch(context, true)),
                           _buildSettingItem(context, Icons.trending_up_rounded, 'Moneda', 'Principal', trailing: _buildBadge(context, r'USD ($)', null)),
                           _buildSettingItem(context, Icons.language_rounded, 'Idioma', 'Aplicación', trailing: _buildBadge(context, 'Español', null)),
@@ -82,6 +257,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             'Proveedores', 
                             'Gestionar proveedores', 
                             onTap: () => Navigator.pushNamed(context, AppRoutes.suppliers),
+                          ),
+                          _buildSettingItem(
+                            context,
+                            Icons.people_alt_rounded, 
+                            'Clientes', 
+                            'Gestionar clientes y compradores', 
+                            onTap: () => Navigator.pushNamed(context, AppRoutes.customers),
                           ),
                           _buildSettingItem(
                             context,
@@ -117,7 +299,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             color: Colors.greenAccent,
                             onTap: () => Navigator.pushNamed(context, AppRoutes.updatePassword),
                           ),
-                          _buildSettingItem(context, Icons.security_outlined, 'Biometría', 'Huella o Face ID', color: Colors.greenAccent, trailing: _buildSwitch(context, true)),
+                           _buildSettingItem(
+                             context, 
+                             Icons.security_outlined, 
+                             'Biometría', 
+                             'Huella o Face ID', 
+                             color: Colors.greenAccent, 
+                             trailing: Transform.scale(
+                               scale: 0.8,
+                               child: Switch(
+                                 value: _biometricsEnabled,
+                                 onChanged: _toggleBiometrics,
+                                 activeColor: AppColors.moradoPrincipal,
+                               ),
+                             ),
+                           ),
                         ]),
                         const SizedBox(height: 25),
                         _buildSectionTitle('Más opciones', context),
@@ -157,7 +353,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         const SizedBox(height: 30),
                         _buildLogoutButton(context),
                         const SizedBox(height: 20),
-                        Center(child: Text('Versión 1.2.3 (Build 45) 🛡️', style: TextStyle(color: AppColors.getSubtextColor(context).withValues(alpha: 0.5), fontSize: 12))),
+                        Center(child: Text('Versión 1.0.0 🛡️', style: TextStyle(color: AppColors.getSubtextColor(context).withValues(alpha: 0.5), fontSize: 12))),
                         const SizedBox(height: 120),
                       ],
                     ),
@@ -172,6 +368,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  String _getProfileImageUrl(String? localPath) {
+    if (localPath == null || localPath.isEmpty) return '';
+    if (localPath.startsWith('http://') || localPath.startsWith('https://')) {
+      return localPath;
+    }
+    final cleanedPath = localPath
+        .replaceAll('C:\\Users\\aldo1\\Documents\\InventarioAPP\\', '')
+        .replaceAll('C:\\Users\\aldo1\\Documents\\InventarioAPP', '')
+        .replaceAll('\\', '/');
+    
+    final serverBase = DbConfig.apiBaseUrl.replaceAll('/api', '');
+    return '$serverBase/api/uploads/$cleanedPath';
+  }
+
   Widget _buildBlurOrb(Color color, double size) {
     return Container(
       width: size, height: size,
@@ -181,6 +391,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _buildHeader(BuildContext context) {
+    final user = Provider.of<AuthProvider>(context).user;
+    final imageUrl = _getProfileImageUrl(user?.profileImageUrl);
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Row(
@@ -196,7 +408,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
             ),
           ),
-          const CircleAvatar(radius: 20, backgroundImage: NetworkImage('https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=150&auto=format&fit=crop')),
+          CircleAvatar(
+            radius: 20, 
+            backgroundColor: AppColors.moradoPrincipal.withValues(alpha: 0.2),
+            backgroundImage: imageUrl.isNotEmpty ? NetworkImage(imageUrl) : null,
+            child: imageUrl.isEmpty ? Icon(Icons.person_rounded, color: AppColors.moradoPrincipal, size: 20) : null,
+          ),
         ],
       ),
     );
@@ -220,6 +437,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildBusinessCard(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final user = Provider.of<AuthProvider>(context).user;
+    final imageUrl = _getProfileImageUrl(user?.profileImageUrl);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -238,8 +457,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               Container(
                 height: 55, width: 55,
-                decoration: BoxDecoration(color: AppColors.getCardColor(context), shape: BoxShape.circle, border: Border.all(color: AppColors.moradoPrincipal, width: 2)),
-                child: Icon(Icons.inventory_2_rounded, color: AppColors.moradoPrincipal, size: 24),
+                decoration: BoxDecoration(
+                  color: AppColors.getCardColor(context), 
+                  shape: BoxShape.circle, 
+                  border: Border.all(color: AppColors.moradoPrincipal, width: 2),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(27.5),
+                  child: imageUrl.isNotEmpty
+                      ? Image.network(
+                          imageUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => Icon(Icons.person_rounded, color: AppColors.moradoPrincipal, size: 24),
+                        )
+                      : Icon(Icons.person_rounded, color: AppColors.moradoPrincipal, size: 24),
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -248,9 +480,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     Row(
                       children: [
-                        const Flexible(
-                          child: Text('Negocio Pro', 
-                            style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                        Flexible(
+                          child: Text(
+                            user?.name ?? 'Usuario', 
+                            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -258,12 +491,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(color: AppColors.moradoPrincipal.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(5)),
-                          child: const Text('Premium', style: TextStyle(color: AppColors.moradoPrincipal, fontSize: 8, fontWeight: FontWeight.bold)),
+                          child: Text(
+                            user?.role ?? 'ALMACENERO', 
+                            style: const TextStyle(color: AppColors.moradoPrincipal, fontSize: 8, fontWeight: FontWeight.bold),
+                          ),
                         ),
                       ],
                     ),
-                    Text('juan.negocio@email.com', style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 11), overflow: TextOverflow.ellipsis),
-                    Text('ID: NEG-2024-001', style: TextStyle(color: AppColors.getSubtextColor(context).withValues(alpha: 0.7), fontSize: 10)),
+                    Text(user?.email ?? 'usuario@email.com', style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 11), overflow: TextOverflow.ellipsis),
+                    Text('ID de Usuario: ${user?.id ?? "N/D"}', style: TextStyle(color: AppColors.getSubtextColor(context).withValues(alpha: 0.7), fontSize: 10)),
                   ],
                 ),
               ),
@@ -274,14 +510,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Uso: 60%', style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 10)),
-              Text('6 GB / 10 GB', style: TextStyle(color: AppColors.getTextColor(context), fontSize: 10)),
+              Text('Almacén Activo', style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 10)),
+              Text('Principal', style: TextStyle(color: AppColors.getTextColor(context), fontSize: 10)),
             ],
           ),
           const SizedBox(height: 6),
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
-            child: const LinearProgressIndicator(value: 0.6, backgroundColor: Colors.white10, valueColor: AlwaysStoppedAnimation<Color>(AppColors.moradoPrincipal), minHeight: 4),
+            child: const LinearProgressIndicator(value: 1.0, backgroundColor: Colors.white10, valueColor: AlwaysStoppedAnimation<Color>(AppColors.moradoPrincipal), minHeight: 4),
           ),
         ],
       ),
@@ -576,17 +812,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 'Exportar a Excel (.xlsx)',
                 'Formato ideal para cálculos y edición en Microsoft Excel.',
                 Colors.green,
-                () => _simulateExport(context, 'Excel (.xlsx)'),
+                () => _performRealExport(context, 'Excel (.xlsx)'),
               ),
               const SizedBox(height: 12),
               _buildExportOption(
                 context,
                 sheetContext,
-                Icons.description_rounded,
-                'Exportar a PDF (.pdf)',
-                'Genera un reporte listo para imprimir o compartir.',
+                Icons.picture_as_pdf_rounded,
+                'Exportar a Reporte PDF (.pdf)',
+                'Genera un documento PDF profesional con existencias y movimientos.',
                 Colors.redAccent,
-                () => _simulateExport(context, 'PDF (.pdf)'),
+                () => _performRealExport(context, 'PDF (.pdf)'),
               ),
               const SizedBox(height: 12),
               _buildExportOption(
@@ -596,7 +832,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 'Exportar a CSV (.csv)',
                 'Formato ligero separado por comas para otros sistemas.',
                 Colors.blue,
-                () => _simulateExport(context, 'CSV (.csv)'),
+                () => _performRealExport(context, 'CSV (.csv)'),
               ),
               const SizedBox(height: 10),
             ],
@@ -654,7 +890,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Future<void> _simulateExport(BuildContext context, String format) async {
+  Future<void> _performRealExport(BuildContext context, String format) async {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -666,15 +902,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const SizedBox(height: 10),
-              const CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Colors.orange)),
+              const CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppColors.moradoPrincipal)),
               const SizedBox(height: 20),
               Text(
-                'Exportando...', 
+                'Generando Reporte...', 
                 style: TextStyle(color: AppColors.getTextColor(context), fontSize: 16, fontWeight: FontWeight.bold)
               ),
               const SizedBox(height: 8),
               Text(
-                'Generando archivo en formato $format',
+                'Procesando existencias y movimientos para $format',
                 style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 12),
                 textAlign: TextAlign.center,
               ),
@@ -685,53 +921,395 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     );
 
-    // Esperar 2 segundos para dar feeling premium
-    await Future.delayed(const Duration(seconds: 2));
-    Navigator.pop(context); // cerrar progress dialog
+    try {
+      final productProvider = Provider.of<ProductProvider>(context, listen: false);
+      await productProvider.fetchProducts();
+      final products = productProvider.products;
 
-    // Mostrar modal de éxito
-    if (!context.mounted) return;
-    showDialog(
-      context: context,
-      builder: (BuildContext successContext) {
-        return AlertDialog(
-          backgroundColor: AppColors.getCardColor(context),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.1), shape: BoxShape.circle),
-                child: const Icon(Icons.check_circle_outline_rounded, color: Colors.green, size: 48),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                '¡Exportación Exitosa!', 
-                style: TextStyle(color: AppColors.getTextColor(context), fontSize: 18, fontWeight: FontWeight.bold)
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Los datos del inventario se han guardado correctamente en tu dispositivo en formato $format.',
-                style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 12),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(successContext),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      final directory = await getTemporaryDirectory();
+
+      if (format.contains('PDF')) {
+        final doc = pw.Document();
+        final inventoryProvider = Provider.of<InventoryProvider>(context, listen: false);
+        await inventoryProvider.fetchTransactions();
+        final transactions = inventoryProvider.transactions;
+
+        doc.addPage(
+          pw.MultiPage(
+            pageFormat: PdfPageFormat.a4,
+            margin: const pw.EdgeInsets.all(1.2 * PdfPageFormat.cm),
+            header: (pw.Context context) {
+              return pw.Container(
+                alignment: pw.Alignment.centerRight,
+                margin: const pw.EdgeInsets.only(bottom: 0.8 * PdfPageFormat.cm),
+                child: pw.Text(
+                  'REPORTE DE INVENTARIO - ERP ENTERPRISE',
+                  style: pw.TextStyle(color: PdfColors.grey, fontSize: 8),
                 ),
-                child: const Text('Aceptar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              );
+            },
+            footer: (pw.Context context) {
+              return pw.Container(
+                alignment: pw.Alignment.centerRight,
+                margin: const pw.EdgeInsets.only(top: 0.8 * PdfPageFormat.cm),
+                child: pw.Text(
+                  'Página ${context.pageNumber} de ${context.pagesCount}',
+                  style: const pw.TextStyle(color: PdfColors.grey, fontSize: 8),
+                ),
+              );
+            },
+            build: (pw.Context context) {
+              return [
+                pw.Header(
+                  level: 0,
+                  child: pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    children: [
+                      pw.Text('Reporte General del ERP', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 20)),
+                      pw.Text('v1.0.0', style: const pw.TextStyle(color: PdfColors.grey, fontSize: 9)),
+                    ],
+                  ),
+                ),
+                pw.Paragraph(
+                  text: 'Este reporte consolida el estado actual de las existencias en almacén y el histórico total de transacciones (entradas y salidas) ejecutadas en el sistema.',
+                  style: const pw.TextStyle(fontSize: 10),
+                ),
+                pw.SizedBox(height: 15),
+                
+                pw.Text('1. Catálogo de Existencias de Productos', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 13, color: PdfColors.purple800)),
+                pw.SizedBox(height: 8),
+                pw.TableHelper.fromTextArray(
+                  headers: ['Nombre', 'SKU', 'Categoría', 'Stock', 'Mínimo', 'Costo', 'Venta'],
+                  data: List<List<dynamic>>.generate(products.length, (index) {
+                    final p = products[index];
+                    return [
+                      p.name,
+                      p.sku ?? 'N/D',
+                      p.category ?? 'General',
+                      '${p.stock}',
+                      '${p.minStock ?? 0}',
+                      '\$${(p.purchasePrice ?? 0.0).toStringAsFixed(2)}',
+                      '\$${p.price.toStringAsFixed(2)}',
+                    ];
+                  }),
+                  headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 8),
+                  headerDecoration: const pw.BoxDecoration(color: PdfColors.purple800),
+                  rowDecoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey300, width: .5))),
+                  cellAlignment: pw.Alignment.centerLeft,
+                  cellStyle: const pw.TextStyle(fontSize: 7.5),
+                ),
+                
+                pw.SizedBox(height: 25),
+                pw.Text('2. Historial de Transacciones (Entradas y Salidas)', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 13, color: PdfColors.purple800)),
+                pw.SizedBox(height: 8),
+                pw.TableHelper.fromTextArray(
+                  headers: ['ID', 'Operación', 'Almacén', 'Operador', 'Razón / Detalle', 'Fecha'],
+                  data: List<List<dynamic>>.generate(transactions.length, (index) {
+                    final t = transactions[index];
+                    final String id = '#${t['id']?.toString() ?? 'N/D'}';
+                    final String movementType = t['type'] ?? 'MOVIMIENTO';
+                    final String warehouse = t['originWarehouseName'] ?? t['warehouseName'] ?? 'Almacén';
+                    final String user = t['userName'] ?? 'Usuario';
+                    
+                    String detail = '';
+                    if (movementType == 'ENTRADA') {
+                      detail = 'Proveedor: ${t['supplierName'] ?? 'General'}';
+                    } else if (movementType == 'SALIDA') {
+                      detail = '${t['reason'] ?? "Venta"} (Cliente: ${t['customerName'] ?? "Consumidor"})';
+                    } else {
+                      detail = t['reason'] ?? 'Ajuste';
+                    }
+
+                    String dateStr = '';
+                    if (t['date'] != null) {
+                      try {
+                        final parsedDate = DateTime.parse(t['date'].toString()).toLocal();
+                        dateStr = '${parsedDate.day}/${parsedDate.month}/${parsedDate.year} ${parsedDate.hour.toString().padLeft(2, '0')}:${parsedDate.minute.toString().padLeft(2, '0')}';
+                      } catch (e) {
+                        dateStr = t['date'].toString();
+                      }
+                    }
+                    
+                    return [
+                      id,
+                      movementType,
+                      warehouse,
+                      user,
+                      detail,
+                      dateStr,
+                    ];
+                  }),
+                  headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 8),
+                  headerDecoration: const pw.BoxDecoration(color: PdfColors.purple800),
+                  rowDecoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey300, width: .5))),
+                  cellAlignment: pw.Alignment.centerLeft,
+                  cellStyle: const pw.TextStyle(fontSize: 7.5),
+                ),
+              ];
+            },
+          ),
+        );
+
+        final docBytes = await doc.save();
+        final pdfFile = File('${directory.path}/Inventario_Movimientos_${DateTime.now().millisecondsSinceEpoch}.pdf');
+        await pdfFile.writeAsBytes(docBytes);
+
+        if (context.mounted) Navigator.pop(context); // Close progress dialog
+
+        await Share.shareXFiles(
+          [XFile(pdfFile.path, mimeType: 'application/pdf')],
+          subject: 'Reporte Completo ERP ${DateTime.now().toLocal().toString().split(' ')[0]}',
+        );
+      } else {
+        // Excel/CSV export
+        final StringBuffer csvBuffer = StringBuffer();
+        csvBuffer.write('\uFEFF'); // BOM for Excel
+        csvBuffer.writeln('ID,Código (SKU),Nombre,Descripción,Precio Venta,Precio Compra,Stock,Categoría,Unidad Medida,Stock Mínimo');
+
+        for (var p in products) {
+          final String id = p.id ?? '';
+          final String sku = p.sku ?? '';
+          final String name = p.name.replaceAll('"', '""');
+          final String desc = p.description.replaceAll('"', '""');
+          final String price = p.price.toString();
+          final String purchasePrice = (p.purchasePrice ?? 0.0).toString();
+          final String stock = p.stock.toString();
+          final String category = (p.category ?? '').replaceAll('"', '""');
+          final String unit = p.unitMeasure ?? '';
+          final String minStock = (p.minStock ?? 0).toString();
+
+          csvBuffer.writeln('"$id","$sku","$name","$desc",$price,$purchasePrice,$stock,"$category","$unit",$minStock');
+        }
+
+        final filename = 'Inventario_${DateTime.now().millisecondsSinceEpoch}.csv';
+        final file = File('${directory.path}/$filename');
+        await file.writeAsString(csvBuffer.toString());
+
+        if (context.mounted) Navigator.pop(context); // Close progress dialog
+
+        await Share.shareXFiles(
+          [XFile(file.path, mimeType: 'text/csv')],
+          subject: 'Reporte de Inventario ${DateTime.now().toLocal().toString().split(' ')[0]}',
+        );
+      }
+
+      if (context.mounted) {
+        showDialog(
+          context: context,
+          builder: (BuildContext successContext) {
+            return AlertDialog(
+              backgroundColor: AppColors.getCardColor(context),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.1), shape: BoxShape.circle),
+                    child: const Icon(Icons.check_circle_outline_rounded, color: Colors.green, size: 48),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    '¡Exportación Exitosa!', 
+                    style: TextStyle(color: AppColors.getTextColor(context), fontSize: 18, fontWeight: FontWeight.bold)
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Los datos se han procesado y compartido exitosamente en formato $format.',
+                    style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 12),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 20),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(successContext),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    ),
+                    child: const Text('Aceptar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
+                ],
               ),
-            ],
+            );
+          }
+        );
+      }
+    } catch (e) {
+      if (context.mounted) Navigator.pop(context); // Close progress dialog
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al exportar inventario: $e'),
+            backgroundColor: Colors.red,
           ),
         );
       }
+    }
+  }
+
+  String _getLogoUrl(String? relativePath) {
+    if (relativePath == null || relativePath.isEmpty) return '';
+    final serverBase = DbConfig.apiBaseUrl.replaceAll('/api', '');
+    return '$serverBase/api/uploads/$relativePath';
+  }
+
+  Widget _buildLogoSection(BuildContext context) {
+    final inventoryProvider = Provider.of<InventoryProvider>(context);
+    final logoUrl = _getLogoUrl(inventoryProvider.logoUrl);
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.getCardColor(context),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+      ),
+      child: Column(
+        children: [
+          // Logo preview
+          Container(
+            width: 120,
+            height: 120,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.moradoPrincipal.withValues(alpha: 0.5), width: 2),
+              color: AppColors.moradoPrincipal.withValues(alpha: 0.05),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(18),
+              child: logoUrl.isNotEmpty
+                  ? Image.network(
+                      logoUrl,
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) => Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.image_not_supported_outlined, color: AppColors.getSubtextColor(context), size: 36),
+                          const SizedBox(height: 6),
+                          Text('Sin logo', style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 11)),
+                        ],
+                      ),
+                    )
+                  : Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.add_photo_alternate_outlined, color: AppColors.moradoPrincipal, size: 36),
+                        const SizedBox(height: 6),
+                        Text('Sin logo', style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 11)),
+                      ],
+                    ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Instructions text
+          Text(
+            'Sube el logo o ícono de tu empresa',
+            style: TextStyle(color: AppColors.getTextColor(context), fontWeight: FontWeight.bold, fontSize: 14),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Pon una imagen PNG o JPG. El logo aparecerá en el inicio del dashboard. La foto anterior se elimina automáticamente.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 11),
+          ),
+          const SizedBox(height: 20),
+
+          // Upload button
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: inventoryProvider.isLoading ? null : () => _pickAndUploadLogo(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.moradoPrincipal,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                elevation: 3,
+                shadowColor: AppColors.moradoPrincipal.withValues(alpha: 0.3),
+              ),
+              icon: inventoryProvider.isLoading
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Icon(Icons.upload_rounded, color: Colors.white, size: 20),
+              label: Text(
+                inventoryProvider.isLoading ? 'Subiendo...' : 'Subir o Cambiar Logo',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+            ),
+          ),
+          if (logoUrl.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              '✅ Logo activo en el servidor',
+              style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ],
+      ),
     );
+  }
+
+  Future<void> _pickAndUploadLogo(BuildContext context) async {
+    final ImagePicker picker = ImagePicker();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: AppColors.getCardColor(context),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(25)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Seleccionar Logo',
+              style: TextStyle(color: AppColors.getTextColor(context), fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 20),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_rounded, color: AppColors.moradoPrincipal),
+              title: Text('Tomar Foto', style: TextStyle(color: AppColors.getTextColor(context))),
+              onTap: () async {
+                Navigator.pop(ctx);
+                final XFile? image = await picker.pickImage(source: ImageSource.camera, imageQuality: 80, maxWidth: 512, maxHeight: 512);
+                if (image != null && context.mounted) _uploadLogoFile(context, image);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded, color: AppColors.azulPrincipal),
+              title: Text('Elegir de Galería', style: TextStyle(color: AppColors.getTextColor(context))),
+              onTap: () async {
+                Navigator.pop(ctx);
+                final XFile? image = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80, maxWidth: 512, maxHeight: 512);
+                if (image != null && context.mounted) _uploadLogoFile(context, image);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _uploadLogoFile(BuildContext context, XFile file) async {
+    final bytes = await file.readAsBytes();
+    final base64Image = base64.encode(bytes);
+
+    final inventoryProvider = Provider.of<InventoryProvider>(context, listen: false);
+    final success = await inventoryProvider.uploadLogo(base64Image);
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(success ? '✅ Logo actualizado exitosamente.' : '❌ Error al subir el logo.'),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ),
+      );
+    }
   }
 
   Widget _buildLogoutButton(BuildContext context) {
@@ -916,6 +1494,76 @@ class HelpScreen extends StatelessWidget {
                       '• El sistema realiza un respaldo automático diariamente a las 2:00 AM.\n'
                       '• Puedes descargar o visualizar los respaldos en la opción "Copia" de los Ajustes.\n'
                       '• También puedes forzar un "Respaldo Manual" inmediato en cualquier momento.',
+                    ),
+                    const SizedBox(height: 12),
+                    _buildHelpCard(
+                      context,
+                      '🔄',
+                      '¿Cómo transferir mercancía entre bodegas?',
+                      'Para mover stock de un almacén a otro sin alterar el stock global:\n\n'
+                      '1. En Ajustes, ve a "Transferencias".\n'
+                      '2. Presiona en "Nueva Transferencia".\n'
+                      '3. Selecciona el almacén de origen y el almacén de destino.\n'
+                      '4. Agrega los productos a transferir y la cantidad.\n'
+                      '5. Confirma la operación. ¡El stock se debitará del origen y se acreditará al destino automáticamente!',
+                    ),
+                    const SizedBox(height: 12),
+                    _buildHelpCard(
+                      context,
+                      '📊',
+                      '¿Cómo exportar reportes y auditoría?',
+                      'Puedes exportar tu información en múltiples formatos altamente compatibles:\n\n'
+                      '1. Dirígete a la pestaña "Ajustes" -> "Exportar Datos" o ve a "Centro Analítico" en la barra superior del Dashboard.\n'
+                      '2. Selecciona entre PDF, Excel (.xlsx) o CSV (.csv).\n'
+                      '3. El sistema compilará el archivo y te permitirá compartirlo inmediatamente (WhatsApp, Gmail, etc.) y guardará una bitácora de auditoría en la BD.',
+                    ),
+                    const SizedBox(height: 12),
+                    _buildHelpCard(
+                      context,
+                      '👥',
+                      '¿Cómo gestionar Proveedores y Clientes?',
+                      'Para registrar y mantener tus canales de suministro y ventas organizados:\n\n'
+                      '1. En Ajustes, selecciona "Proveedores" o "Clientes".\n'
+                      '2. Presiona en "Nuevo" para agregar un registro con su nombre y contacto.\n'
+                      '3. Podrás editarlos o eliminarlos directamente desde la tarjeta usando los botones de acción rápida.',
+                    ),
+                    const SizedBox(height: 12),
+                    _buildHelpCard(
+                      context,
+                      '📶',
+                      '¿Cómo funciona el Modo Offline?',
+                      'El ERP incluye sincronización automática SQLite de nivel corporativo:\n\n'
+                      '• Si pierdes la conexión, puedes continuar registrando entradas, salidas y transferencias con total normalidad.\n'
+                      '• Los movimientos se almacenarán de forma segura en una cola local interna.\n'
+                      '• Al recuperar el acceso a internet (Wi-Fi o Datos), la app transmitirá silenciosamente todas las transacciones en cola al servidor SQL Server sin interrumpir tu flujo de trabajo.',
+                    ),
+                    const SizedBox(height: 12),
+                    _buildHelpCard(
+                      context,
+                      '🔍',
+                      '¿Cómo usar el Escáner de Códigos QR?',
+                      'Para acelerar los flujos de entradas y salidas con escaneo rápido:\n\n'
+                      '1. En los formularios de "Nueva Entrada" o "Nueva Salida", presiona el botón del Escáner (icono de Cámara).\n'
+                      '2. Enfoca el código QR del producto con la cámara de tu móvil.\n'
+                      '3. El sistema autocompletará el SKU, nombre del producto, precios de lista y enfocará automáticamente el campo de cantidad para que solo digites las unidades.',
+                    ),
+                    const SizedBox(height: 12),
+                    _buildHelpCard(
+                      context,
+                      '🏷️',
+                      '¿Cómo descargar o imprimir Etiquetas QR?',
+                      'Puedes generar etiquetas de producto físicas en dos formatos corporativos:\n\n'
+                      '• Impresión Térmica POS: Presiona "Imprimir POS" en la ficha del producto para buscar e imprimir instantáneamente etiquetas de 58mm/80mm por Bluetooth/Wi-Fi.\n'
+                      '• Descargar PDF (10cm x 10cm): Presiona "Descargar QR", selecciona la cantidad de etiquetas que requieres (ej. 10 unidades) y la app creará un PDF vectorizado de alta resolución con las 10 etiquetas, listo para imprimir en hojas adhesivas.',
+                    ),
+                    const SizedBox(height: 12),
+                    _buildHelpCard(
+                      context,
+                      '🎨',
+                      '¿Cómo activar el modo oscuro o claro?',
+                      'La aplicación cuenta con soporte premium para temas adaptativos:\n\n'
+                      '1. Ve a Ajustes -> "Apariencia" en la sección Preferencias.\n'
+                      '2. Toca la opción para alternar instantáneamente entre el Modo Oscuro Premium y el Modo Claro.',
                     ),
                     const SizedBox(height: 30),
                   ],

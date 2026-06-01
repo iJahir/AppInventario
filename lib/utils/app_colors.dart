@@ -38,3 +38,17 @@ class AppColors {
       : Colors.black54;
   }
 }
+
+extension ColorValuesExtension on Color {
+  Color withValues({
+    double? red,
+    double? green,
+    double? blue,
+    double? alpha,
+  }) {
+    if (alpha != null) {
+      return withOpacity(alpha);
+    }
+    return this;
+  }
+}

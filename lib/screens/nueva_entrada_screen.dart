@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
 import 'package:provider/provider.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import '../utils/app_colors.dart';
 import '../utils/routes.dart';
 import '../providers/inventory_provider.dart';
@@ -339,7 +340,30 @@ class _NuevaEntradaScreenState extends State<NuevaEntradaScreen> {
               ],
             ),
           ),
-          Text("\$${(product['quantity'] * product['price']).toStringAsFixed(2)}", style: TextStyle(color: AppColors.getTextColor(context), fontWeight: FontWeight.bold)),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text("\$${(product['quantity'] * product['price']).toStringAsFixed(2)}", style: TextStyle(color: AppColors.getTextColor(context), fontWeight: FontWeight.bold)),
+              const SizedBox(height: 5),
+              Row(
+                children: [
+                  GestureDetector(
+                    onTap: () => _showAddProductModal(editProduct: product),
+                    child: const Icon(Icons.edit_rounded, color: Colors.blueAccent, size: 18),
+                  ),
+                  const SizedBox(width: 12),
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _productos.remove(product);
+                      });
+                    },
+                    child: const Icon(Icons.delete_rounded, color: Colors.redAccent, size: 18),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -438,15 +462,27 @@ class _NuevaEntradaScreenState extends State<NuevaEntradaScreen> {
 
                     if (context.mounted) {
                       if (success) {
-                        SweetAlert.show(
-                          context,
-                          title: '¡Registro Exitoso!',
-                          message: 'Entrada registrada exitosamente en SQL Server.',
-                          type: SweetAlertType.success,
-                          onConfirm: () {
-                            Navigator.pop(context);
-                          },
-                        );
+                        if (inventoryProvider.lastTransactionOffline) {
+                          SweetAlert.show(
+                            context,
+                            title: '💾 Guardado en Cola',
+                            message: 'Estás sin conexión. La entrada se guardó localmente en la cola offline y se sincronizará automáticamente cuando vuelva el internet.',
+                            type: SweetAlertType.warning,
+                            onConfirm: () {
+                              Navigator.pop(context);
+                            },
+                          );
+                        } else {
+                          SweetAlert.show(
+                            context,
+                            title: '¡Registro Exitoso!',
+                            message: 'Entrada registrada exitosamente en SQL Server.',
+                            type: SweetAlertType.success,
+                            onConfirm: () {
+                              Navigator.pop(context);
+                            },
+                          );
+                        }
                       } else {
                         SweetAlert.show(
                           context,
@@ -476,15 +512,23 @@ class _NuevaEntradaScreenState extends State<NuevaEntradaScreen> {
     );
   }
 
-  void _showAddProductModal() {
+  void _showAddProductModal({Map<String, dynamic>? editProduct}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => _AgregarProductoModal(
+        editProduct: editProduct,
         onAdd: (product) {
           setState(() {
-            _productos.add(product);
+            if (editProduct != null) {
+              final idx = _productos.indexWhere((p) => p['productId'] == editProduct['productId']);
+              if (idx != -1) {
+                _productos[idx] = product;
+              }
+            } else {
+              _productos.add(product);
+            }
           });
         },
       ),
@@ -493,8 +537,9 @@ class _NuevaEntradaScreenState extends State<NuevaEntradaScreen> {
 }
 
 class _AgregarProductoModal extends StatefulWidget {
+  final Map<String, dynamic>? editProduct;
   final Function(Map<String, dynamic>) onAdd;
-  const _AgregarProductoModal({required this.onAdd});
+  const _AgregarProductoModal({this.editProduct, required this.onAdd});
 
   @override
   State<_AgregarProductoModal> createState() => _AgregarProductoModalState();
@@ -504,6 +549,118 @@ class _AgregarProductoModalState extends State<_AgregarProductoModal> {
   String? _selectedProductId;
   int _quantity = 1;
   double _price = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.editProduct != null) {
+      _selectedProductId = widget.editProduct!['productId']?.toString();
+      _quantity = (widget.editProduct!['quantity'] as num?)?.toInt() ?? 1;
+      _price = (widget.editProduct!['price'] as num?)?.toDouble() ?? 0.0;
+    }
+  }
+
+  void _showQRScanner(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.black,
+      builder: (ctx) => FractionallySizedBox(
+        heightFactor: 0.7,
+        child: Stack(
+          children: [
+            MobileScanner(
+              onDetect: (capture) {
+                final List<Barcode> barcodes = capture.barcodes;
+                if (barcodes.isNotEmpty) {
+                  final String? code = barcodes.first.rawValue;
+                  if (code != null) {
+                    final productProvider = Provider.of<ProductProvider>(context, listen: false);
+                    ProductModel? matchedProduct;
+                    for (var p in productProvider.products) {
+                      if (p.sku == code || p.id == code) {
+                        matchedProduct = p;
+                        break;
+                      }
+                    }
+                    if (matchedProduct != null) {
+                      setState(() {
+                        _selectedProductId = matchedProduct!.id;
+                        _price = matchedProduct.price * 0.7;
+                      });
+                      Navigator.pop(ctx);
+                      SweetAlert.show(
+                        context,
+                        title: 'Código Detectado',
+                        message: 'Producto: ${matchedProduct.name}\nSKU: ${matchedProduct.sku}',
+                        type: SweetAlertType.success,
+                      );
+                    } else {
+                      Navigator.pop(ctx);
+                      SweetAlert.show(
+                        context,
+                        title: 'No Encontrado',
+                        message: 'No se encontró ningún producto con código o SKU: "$code".',
+                        type: SweetAlertType.warning,
+                      );
+                    }
+                  }
+                }
+              },
+            ),
+            Positioned(
+              top: 25,
+              left: 20,
+              right: 80,
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Escáner de Producto',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Apunta al código QR o de barras del producto',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Positioned(
+              top: 25,
+              right: 20,
+              child: CircleAvatar(
+                backgroundColor: Colors.white24,
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.pop(ctx),
+                ),
+              ),
+            ),
+            Align(
+              alignment: Alignment.center,
+              child: Container(
+                width: 250,
+                height: 250,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.green, width: 4),
+                  borderRadius: const BorderRadius.all(Radius.circular(12)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -527,9 +684,19 @@ class _AgregarProductoModalState extends State<_AgregarProductoModal> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Agregar producto',
-              style: TextStyle(color: AppColors.getTextColor(context), fontSize: 20, fontWeight: FontWeight.bold),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  widget.editProduct != null ? 'Editar producto' : 'Agregar producto',
+                  style: TextStyle(color: AppColors.getTextColor(context), fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.qr_code_scanner_rounded, color: AppColors.moradoPrincipal, size: 28),
+                  onPressed: () => _showQRScanner(context),
+                  tooltip: 'Escanear QR de producto',
+                ),
+              ],
             ),
             const SizedBox(height: 25),
             _buildDropdownField(
@@ -705,6 +872,8 @@ class _AgregarProductoModalState extends State<_AgregarProductoModal> {
                   'name': p.name,
                   'quantity': _quantity,
                   'price': _price,
+                  'currentStock': p.stock,
+                  'minStock': p.minStock,
                 });
                 Navigator.pop(context);
               }
@@ -716,7 +885,12 @@ class _AgregarProductoModalState extends State<_AgregarProductoModal> {
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [BoxShadow(color: AppColors.moradoPrincipal.withValues(alpha: 0.3), blurRadius: 10)],
               ),
-              child: const Center(child: Text('Agregar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+              child: Center(
+                child: Text(
+                  widget.editProduct != null ? 'Guardar' : 'Agregar',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+              ),
             ),
           ),
         ),

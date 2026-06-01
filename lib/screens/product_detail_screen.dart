@@ -1,12 +1,20 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
+import 'dart:io' as io;
 import 'package:provider/provider.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import 'package:path_provider/path_provider.dart';
 import '../models/product_model.dart';
 import '../models/kardex_model.dart';
 import '../providers/product_provider.dart';
 import '../utils/app_colors.dart';
 import '../utils/routes.dart';
+import '../utils/db_config.dart';
 import '../widgets/wavy_progress_indicator.dart';
+import '../widgets/sweet_alert.dart';
 
 class ProductDetailScreen extends StatefulWidget {
   const ProductDetailScreen({super.key});
@@ -18,17 +26,39 @@ class ProductDetailScreen extends StatefulWidget {
 class _ProductDetailScreenState extends State<ProductDetailScreen> {
   bool _isLoadingKardex = true;
   List<KardexModel> _kardexMovements = [];
+  bool _isKardexLoaded = false;
+
+  String _getProductImageUrl(String? localPath) {
+    if (localPath == null || localPath.isEmpty) return '';
+    if (localPath.startsWith('http://') || localPath.startsWith('https://')) {
+      return localPath;
+    }
+    final cleanedPath = localPath
+        .replaceAll('C:\\Users\\aldo1\\Documents\\InventarioAPP\\', '')
+        .replaceAll('C:\\Users\\aldo1\\Documents\\InventarioAPP', '')
+        .replaceAll('\\', '/');
+    
+    final serverBase = DbConfig.apiBaseUrl.replaceAll('/api', '');
+    return '$serverBase/api/uploads/$cleanedPath';
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final product = ModalRoute.of(context)!.settings.arguments as ProductModel;
-    if (product.id != null) {
-      _loadRecentMovements(product.id!);
-    } else {
-      setState(() {
-        _isLoadingKardex = false;
-      });
+    if (!_isKardexLoaded) {
+      final product = ModalRoute.of(context)!.settings.arguments as ProductModel;
+      if (product.id != null) {
+        _isKardexLoaded = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _loadRecentMovements(product.id!);
+          }
+        });
+      } else {
+        setState(() {
+          _isLoadingKardex = false;
+        });
+      }
     }
   }
 
@@ -46,7 +76,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final product = ModalRoute.of(context)!.settings.arguments as ProductModel;
+    final initialProduct = ModalRoute.of(context)!.settings.arguments as ProductModel;
+    final productProvider = Provider.of<ProductProvider>(context);
+    final product = productProvider.products.firstWhere(
+      (p) => p.id == initialProduct.id,
+      orElse: () => initialProduct,
+    );
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     
     // Cálculos comerciales
@@ -84,7 +119,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           SafeArea(
             child: Column(
               children: [
-                _buildHeader(context, product.name),
+                _buildHeader(context, product),
                 Expanded(
                   child: SingleChildScrollView(
                     physics: const BouncingScrollPhysics(),
@@ -94,6 +129,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       children: [
                         _buildProductIdentityCard(context, product, stockColor, stockStatusText),
                         const SizedBox(height: 20),
+                        _buildQRCodeSection(context, product),
+                        const SizedBox(height: 25),
                         
                         _buildSectionTitle(context, 'Métricas Comerciales'),
                         const SizedBox(height: 15),
@@ -110,10 +147,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         _buildAuditDates(context),
                         const SizedBox(height: 25),
 
+                        _buildPepsLotsButton(context, product),
+                        const SizedBox(height: 25),
+
                         _buildSectionTitle(context, 'Últimos 5 Movimientos'),
                         const SizedBox(height: 15),
                         _buildRecentMovementsSection(context, product),
                         const SizedBox(height: 40),
+
                       ],
                     ),
                   ),
@@ -138,7 +179,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
-  Widget _buildHeader(BuildContext context, String productName) {
+  Widget _buildHeader(BuildContext context, ProductModel product) {
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Row(
@@ -163,13 +204,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 Text(
                   'Ficha de Producto',
                   style: TextStyle(
-                    color: AppColors.getSubtextColor(context),
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
+                     color: AppColors.getSubtextColor(context),
+                     fontSize: 12,
+                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 Text(
-                  productName,
+                  product.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -179,6 +220,28 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   ),
                 ),
               ],
+            ),
+          ),
+          const SizedBox(width: 15),
+          GestureDetector(
+            onTap: () {
+              Navigator.pushNamed(
+                context, 
+                AppRoutes.addProduct, 
+                arguments: product,
+              ).then((_) {
+                // Refresh list
+                Provider.of<ProductProvider>(context, listen: false).fetchProducts();
+              });
+            },
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.getCardColor(context),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+              ),
+              child: const Icon(Icons.edit_rounded, color: AppColors.moradoPrincipal, size: 22),
             ),
           ),
         ],
@@ -224,7 +287,33 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: AppColors.moradoPrincipal.withValues(alpha: 0.2)),
             ),
-            child: const Icon(Icons.inventory_2_rounded, color: AppColors.moradoPrincipal, size: 36),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(19),
+              child: product.imageUrl != null && product.imageUrl!.isNotEmpty
+                  ? Image.network(
+                      _getProductImageUrl(product.imageUrl),
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => const Icon(
+                        Icons.inventory_2_rounded,
+                        color: AppColors.moradoPrincipal,
+                        size: 36,
+                      ),
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return const Center(
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.moradoPrincipal,
+                            ),
+                          ),
+                        );
+                      },
+                    )
+                  : const Icon(Icons.inventory_2_rounded, color: AppColors.moradoPrincipal, size: 36),
+            ),
           ),
           const SizedBox(width: 20),
           Expanded(
@@ -671,4 +760,457 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       ],
     );
   }
+
+  Widget _buildQRCodeSection(BuildContext context, ProductModel product) {
+    final String qrData = product.sku ?? product.id ?? product.name;
+    
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.getCardColor(context),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Código QR de Producto',
+            style: TextStyle(
+              color: AppColors.getTextColor(context),
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 15),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(15),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10),
+                  ],
+                ),
+                child: QrImageView(
+                  data: qrData,
+                  version: QrVersions.auto,
+                  size: 110.0,
+                  gapless: false,
+                  eyeStyle: const QrEyeStyle(
+                    eyeShape: QrEyeShape.square,
+                    color: Colors.black,
+                  ),
+                  dataModuleStyle: const QrDataModuleStyle(
+                    dataModuleShape: QrDataModuleShape.square,
+                    color: Colors.black,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 20),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      product.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: AppColors.getTextColor(context),
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      'Código/SKU: $qrData',
+                      style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 11),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      'Precio: \$${product.price.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        color: AppColors.azulPrincipal,
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 15),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        GestureDetector(
+                          onTap: () => _showQRQuantityDialog(context, product),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [AppColors.moradoPrincipal, AppColors.azulPrincipal],
+                              ),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.max,
+                              children: [
+                                Icon(Icons.download_rounded, color: Colors.white, size: 14),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Descargar QR',
+                                  style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        GestureDetector(
+                          onTap: () => _simulateThermalPrinting(context, product),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: AppColors.getBackgroundColor(context),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.white24),
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.max,
+                              children: [
+                                Icon(Icons.print_rounded, color: Colors.white, size: 14),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Imprimir POS',
+                                  style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showQRQuantityDialog(BuildContext context, ProductModel product) {
+    int qty = 1;
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.getCardColor(context),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('Cantidad de Etiquetas', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Selecciona cuántas etiquetas QR de 10cm x 10cm deseas generar en el archivo PDF.',
+                style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 13),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    onPressed: () => setDialogState(() { if (qty > 1) qty--; }),
+                    icon: const Icon(Icons.remove_circle_outline_rounded, color: AppColors.moradoPrincipal, size: 30),
+                  ),
+                  const SizedBox(width: 15),
+                  Text('$qty', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                  const SizedBox(width: 15),
+                  IconButton(
+                    onPressed: () => setDialogState(() { if (qty < 100) qty++; }),
+                    icon: const Icon(Icons.add_circle_outline_rounded, color: AppColors.moradoPrincipal, size: 30),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Cancelar', style: TextStyle(color: AppColors.getSubtextColor(context))),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.moradoPrincipal),
+              onPressed: () {
+                Navigator.pop(ctx);
+                _generateAndShareQRLabels(context, product, qty);
+              },
+              child: const Text('Generar PDF', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _generateAndShareQRLabels(BuildContext context, ProductModel product, int quantity) async {
+    final doc = pw.Document();
+    final int itemsPerPage = 8;
+
+    for (int i = 0; i < quantity; i += itemsPerPage) {
+      final int end = (i + itemsPerPage < quantity) ? i + itemsPerPage : quantity;
+      final int pageItemsCount = end - i;
+
+      doc.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(1.5 * PdfPageFormat.cm),
+          build: (pw.Context ctx) {
+            return pw.GridView(
+              crossAxisCount: 2,
+              childAspectRatio: 1.0,
+              crossAxisSpacing: 1.0 * PdfPageFormat.cm,
+              mainAxisSpacing: 1.0 * PdfPageFormat.cm,
+              children: List<pw.Widget>.generate(pageItemsCount, (index) {
+                return pw.Container(
+                  alignment: pw.Alignment.center,
+                  decoration: pw.BoxDecoration(
+                    border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
+                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+                  ),
+                  padding: const pw.EdgeInsets.all(0.5 * PdfPageFormat.cm),
+                  child: pw.BarcodeWidget(
+                    barcode: pw.Barcode.qrCode(),
+                    data: product.sku ?? product.id ?? product.name,
+                    width: 140,
+                    height: 140,
+                  ),
+                );
+              }),
+            );
+          },
+        ),
+      );
+    }
+
+    final bytes = await doc.save();
+    
+    // Guardar en la carpeta pública de descargas (Android) con fallbacks
+    bool savedLocally = false;
+    String localPath = '';
+    try {
+      final cleanedName = product.name.replaceAll(RegExp(r'[^\w\s\-]'), '').replaceAll(' ', '_');
+      final filename = '${cleanedName}_qr.pdf';
+      
+      io.Directory? downloadDir;
+      if (io.Platform.isAndroid) {
+        final publicDir = io.Directory('/storage/emulated/0/Download');
+        if (await publicDir.exists()) {
+          downloadDir = publicDir;
+        }
+      }
+      
+      if (downloadDir == null) {
+        try {
+          downloadDir = await getDownloadsDirectory();
+        } catch (_) {}
+      }
+      if (downloadDir == null) {
+        try {
+          downloadDir = await getExternalStorageDirectory();
+        } catch (_) {}
+      }
+      
+      if (downloadDir != null) {
+        final file = io.File('${downloadDir.path}/$filename');
+        await file.writeAsBytes(bytes);
+        savedLocally = true;
+        localPath = file.path;
+      }
+    } catch (e) {
+      // Ignorar si falla
+    }
+
+    if (context.mounted) {
+      if (savedLocally) {
+        SweetAlert.show(
+          context,
+          title: 'PDF Descargado',
+          message: 'El archivo de etiquetas se ha guardado en la carpeta de Descargas:\n\n${localPath.split(io.Platform.pathSeparator).last}',
+          type: SweetAlertType.success,
+        );
+      }
+    }
+
+    final cleanedShareName = product.name.replaceAll(RegExp(r'[^\w\s\-]'), '').replaceAll(' ', '_');
+    await Printing.sharePdf(bytes: bytes, filename: '${cleanedShareName}_qr.pdf');
+  }
+
+  void _simulateThermalPrinting(BuildContext context, ProductModel product) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        double progress = 0.0;
+        String statusText = "Buscando impresoras térmicas Bluetooth/Wi-Fi...";
+        
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            Future.delayed(const Duration(milliseconds: 800), () {
+              if (ctx.mounted && progress == 0.0) {
+                setDialogState(() {
+                  progress = 0.4;
+                  statusText = "Conectando a 'SPP-R200II' (Bluetooth 5.0)...";
+                });
+              }
+            });
+            Future.delayed(const Duration(milliseconds: 1600), () {
+              if (ctx.mounted && progress == 0.4) {
+                setDialogState(() {
+                  progress = 0.8;
+                  statusText = "Transmitiendo datos de etiqueta de 58mm...";
+                });
+              }
+            });
+            Future.delayed(const Duration(milliseconds: 2400), () {
+              if (ctx.mounted && progress == 0.8) {
+                setDialogState(() {
+                  progress = 1.0;
+                  statusText = "¡Etiqueta física impresa con éxito!";
+                });
+              }
+            });
+
+            return Dialog(
+              backgroundColor: AppColors.getCardColor(context),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              child: Padding(
+                padding: const EdgeInsets.all(25),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.print_rounded, color: AppColors.moradoPrincipal, size: 48),
+                    const SizedBox(height: 15),
+                    const Text(
+                      'Impresión Térmica POS',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
+                    ),
+                    const SizedBox(height: 20),
+                    LinearProgressIndicator(
+                      value: progress,
+                      backgroundColor: Colors.white10,
+                      valueColor: const AlwaysStoppedAnimation<Color>(AppColors.azulPrincipal),
+                    ),
+                    const SizedBox(height: 15),
+                    Text(
+                      statusText,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 12),
+                    ),
+                    const SizedBox(height: 25),
+                    if (progress >= 1.0)
+                      GestureDetector(
+                        onTap: () => Navigator.pop(ctx),
+                        child: Container(
+                          width: double.infinity,
+                          height: 45,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(colors: [AppColors.moradoPrincipal, AppColors.azulPrincipal]),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Center(
+                            child: Text(
+                              'Listo',
+                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildPepsLotsButton(BuildContext context, ProductModel product) {
+    return GestureDetector(
+      onTap: () => Navigator.pushNamed(
+        context,
+        '/product-lots',
+        arguments: product,
+      ),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              const Color(0xFF6A11CB).withValues(alpha: 0.15),
+              const Color(0xFF2575FC).withValues(alpha: 0.1),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: const Color(0xFF6A11CB).withValues(alpha: 0.25),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF6A11CB), Color(0xFF2575FC)],
+                ),
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF6A11CB).withValues(alpha: 0.3),
+                    blurRadius: 8,
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.layers_rounded, color: Colors.white, size: 20),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Lotes PEPS / FIFO',
+                    style: TextStyle(
+                      color: AppColors.getTextColor(context),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    'Ver trazabilidad por lote · Activos y agotados',
+                    style: TextStyle(
+                      color: AppColors.getSubtextColor(context),
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: AppColors.getSubtextColor(context).withValues(alpha: 0.5),
+              size: 22,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
+

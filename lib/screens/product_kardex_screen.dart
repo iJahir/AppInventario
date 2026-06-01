@@ -18,6 +18,8 @@ class _ProductKardexScreenState extends State<ProductKardexScreen> {
   List<KardexModel> _allMovements = [];
   List<KardexModel> _filteredMovements = [];
   bool _initialized = false;
+  int _currentPage = 1;
+  static const int _itemsPerPage = 10;
 
   @override
   void didChangeDependencies() {
@@ -25,6 +27,7 @@ class _ProductKardexScreenState extends State<ProductKardexScreen> {
     if (!_initialized) {
       final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
       _allMovements = args['kardex'] as List<KardexModel>;
+      _currentPage = 1;
       _applyFilter();
       _initialized = true;
     }
@@ -43,6 +46,7 @@ class _ProductKardexScreenState extends State<ProductKardexScreen> {
     }
 
     setState(() {
+      _currentPage = 1;
       if (_activeFilter == 'Rango' && _selectedDateRange != null) {
         _filteredMovements = _allMovements.where((m) {
           return m.date.isAfter(_selectedDateRange!.start.subtract(const Duration(seconds: 1))) &&
@@ -538,144 +542,299 @@ class _ProductKardexScreenState extends State<ProductKardexScreen> {
 
     // Para la tabla ilustramos de forma descendente (del más nuevo al más viejo)
     final listForTable = List<KardexModel>.from(_filteredMovements.reversed);
+    final int totalItems = listForTable.length;
+    final int totalPages = (totalItems / _itemsPerPage).ceil();
+    if (_currentPage > totalPages && totalPages > 0) {
+      _currentPage = totalPages;
+    }
 
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.getCardColor(context),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-      ),
-      child: ListView.separated(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: listForTable.length,
-        separatorBuilder: (context, index) => const Divider(color: Colors.white10, height: 1),
-        itemBuilder: (context, index) {
-          final m = listForTable[index];
-          final isEntrada = m.type == 'ENTRADA';
+    final int startIndex = (_currentPage - 1) * _itemsPerPage;
+    final int endIndex = (startIndex + _itemsPerPage) > totalItems ? totalItems : (startIndex + _itemsPerPage);
 
-          return Container(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    final paginatedMovements = listForTable.sublist(startIndex, endIndex);
+
+    return Column(
+      children: [
+        // Rango de items
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Mostrando ${startIndex + 1}-$endIndex de $totalItems movimientos',
+                style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 11),
+              ),
+              Text(
+                'Pág. $_currentPage de $totalPages',
+                style: const TextStyle(color: AppColors.moradoPrincipal, fontSize: 11, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+        ),
+
+        // Listado de movimientos
+        Container(
+          decoration: BoxDecoration(
+            color: AppColors.getCardColor(context),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+          ),
+          child: ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: paginatedMovements.length,
+            separatorBuilder: (context, index) => const Divider(color: Colors.white10, height: 1),
+            itemBuilder: (context, index) {
+              final m = paginatedMovements[index];
+              final isEntrada = m.type == 'ENTRADA';
+
+              return Container(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Tipo Badge
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: (isEntrada ? Colors.greenAccent : Colors.redAccent).withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: (isEntrada ? Colors.greenAccent : Colors.redAccent).withValues(alpha: 0.2),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            isEntrada ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
-                            color: isEntrada ? Colors.greenAccent : Colors.redAccent,
-                            size: 12,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        // Tipo Badge
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: (isEntrada ? Colors.greenAccent : Colors.redAccent).withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: (isEntrada ? Colors.greenAccent : Colors.redAccent).withValues(alpha: 0.2),
+                            ),
                           ),
-                          const SizedBox(width: 4),
-                          Text(
-                            m.type,
-                            style: TextStyle(
-                              color: isEntrada ? Colors.greenAccent : Colors.redAccent,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
+                          child: Row(
+                            children: [
+                              Icon(
+                                isEntrada ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
+                                color: isEntrada ? Colors.greenAccent : Colors.redAccent,
+                                size: 12,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                m.type,
+                                style: TextStyle(
+                                  color: isEntrada ? Colors.greenAccent : Colors.redAccent,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        
+                        // Stock Resultante (Balance)
+                        Row(
+                          children: [
+                            Text(
+                              'Stock: ',
+                              style: TextStyle(color: AppColors.getSubtextColor(context).withValues(alpha: 0.5), fontSize: 11),
+                            ),
+                            Text(
+                              '${m.runningStock} u.',
+                              style: TextStyle(
+                                color: AppColors.getTextColor(context),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    
+                    const SizedBox(height: 12),
+                    
+                    // Cantidad y Precio
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Cantidad: ${isEntrada ? "+" : "-"}${m.quantity} u.',
+                          style: TextStyle(
+                            color: AppColors.getTextColor(context),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        Text(
+                          'P.U.: \$${m.unitPrice.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            color: AppColors.getSubtextColor(context),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                    
+                    const SizedBox(height: 8),
+
+                    // Badge Lote PEPS (solo si tiene lotId)
+                    if (m.lotId != null) ...[
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF6A11CB).withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: const Color(0xFF6A11CB).withValues(alpha: 0.2),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.layers_rounded, color: Color(0xFFB39DDB), size: 10),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Lote #${m.lotId}',
+                                  style: const TextStyle(
+                                    color: Color(0xFFB39DDB),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
                       ),
-                    ),
-                    
-                    // Stock Resultante (Balance)
+                      const SizedBox(height: 8),
+                    ],
+
+                    // Observaciones
+                    if (m.observations.isNotEmpty) ...[
+                      Text(
+                        'Obs: ${m.observations}',
+                        style: TextStyle(
+                          color: AppColors.getSubtextColor(context).withValues(alpha: 0.7),
+                          fontSize: 12,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                    ],
+
+                    // Usuario y fecha
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Stock: ',
-                          style: TextStyle(color: AppColors.getSubtextColor(context).withValues(alpha: 0.5), fontSize: 11),
+                          'Por: ${m.userName}',
+                          style: TextStyle(
+                            color: AppColors.getSubtextColor(context).withValues(alpha: 0.6),
+                            fontSize: 11,
+                          ),
                         ),
                         Text(
-                          '${m.runningStock} u.',
+                          '${m.date.day}/${m.date.month}/${m.date.year} ${m.date.hour.toString().padLeft(2, '0')}:${m.date.minute.toString().padLeft(2, '0')}',
                           style: TextStyle(
-                            color: AppColors.getTextColor(context),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
+                            color: AppColors.getSubtextColor(context).withValues(alpha: 0.6),
+                            fontSize: 11,
                           ),
                         ),
                       ],
                     ),
                   ],
                 ),
-                
-                const SizedBox(height: 12),
-                
-                // Cantidad y Precio
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Cantidad: ${isEntrada ? "+" : "-"}${m.quantity} u.',
-                      style: TextStyle(
-                        color: AppColors.getTextColor(context),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                      ),
+              );
+            },
+          ),
+        ),
+
+
+        // Controles de Paginación
+        if (totalPages > 1) ...[
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Botón Anterior
+              GestureDetector(
+                onTap: _currentPage > 1 ? () => setState(() => _currentPage--) : null,
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: _currentPage > 1 ? AppColors.getCardColor(context) : AppColors.getCardColor(context).withValues(alpha: 0.5),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                  ),
+                  child: Icon(
+                    Icons.chevron_left_rounded,
+                    color: _currentPage > 1 ? AppColors.getTextColor(context) : AppColors.getSubtextColor(context).withValues(alpha: 0.3),
+                    size: 20,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 15),
+
+              // Números de Página
+              ...List.generate(totalPages, (index) {
+                final pageNum = index + 1;
+                final bool isSelected = pageNum == _currentPage;
+
+                if (totalPages > 5 && (pageNum - _currentPage).abs() > 1 && pageNum != 1 && pageNum != totalPages) {
+                  if (pageNum == 2 || pageNum == totalPages - 1) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 4),
+                      child: Text('...', style: TextStyle(color: Colors.white30)),
+                    );
+                  }
+                  return const SizedBox.shrink();
+                }
+
+                return GestureDetector(
+                  onTap: () => setState(() => _currentPage = pageNum),
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: isSelected ? AppColors.moradoPrincipal : AppColors.getCardColor(context),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: isSelected ? AppColors.moradoPrincipal : Colors.white.withValues(alpha: 0.05)),
+                      boxShadow: isSelected ? [BoxShadow(color: AppColors.moradoPrincipal.withValues(alpha: 0.3), blurRadius: 8)] : null,
                     ),
-                    Text(
-                      'P.U.: \$${m.unitPrice.toStringAsFixed(2)}',
+                    alignment: Alignment.center,
+                    child: Text(
+                      '$pageNum',
                       style: TextStyle(
-                        color: AppColors.getSubtextColor(context),
+                        color: isSelected ? Colors.white : AppColors.getTextColor(context),
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                         fontSize: 12,
                       ),
                     ),
-                  ],
-                ),
-                
-                const SizedBox(height: 8),
-
-                // Observaciones
-                if (m.observations.isNotEmpty) ...[
-                  Text(
-                    'Obs: ${m.observations}',
-                    style: TextStyle(
-                      color: AppColors.getSubtextColor(context).withValues(alpha: 0.7),
-                      fontSize: 12,
-                      fontStyle: FontStyle.italic,
-                    ),
                   ),
-                  const SizedBox(height: 6),
-                ],
+                );
+              }),
 
-                // Usuario y fecha
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Por: ${m.userName}',
-                      style: TextStyle(
-                        color: AppColors.getSubtextColor(context).withValues(alpha: 0.6),
-                        fontSize: 11,
-                      ),
-                    ),
-                    Text(
-                      '${m.date.day}/${m.date.month}/${m.date.year} ${m.date.hour.toString().padLeft(2, '0')}:${m.date.minute.toString().padLeft(2, '0')}',
-                      style: TextStyle(
-                        color: AppColors.getSubtextColor(context).withValues(alpha: 0.6),
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
+              const SizedBox(width: 15),
+              // Botón Siguiente
+              GestureDetector(
+                onTap: _currentPage < totalPages ? () => setState(() => _currentPage++) : null,
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: _currentPage < totalPages ? AppColors.getCardColor(context) : AppColors.getCardColor(context).withValues(alpha: 0.5),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                  ),
+                  child: Icon(
+                    Icons.chevron_right_rounded,
+                    color: _currentPage < totalPages ? AppColors.getTextColor(context) : AppColors.getSubtextColor(context).withValues(alpha: 0.3),
+                    size: 20,
+                  ),
                 ),
-              ],
-            ),
-          );
-        },
-      ),
+              ),
+            ],
+          ),
+        ],
+      ],
     );
   }
 }

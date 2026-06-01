@@ -111,7 +111,23 @@ BEGIN
 END
 GO
 
--- 9. Tabla de Detalles de Transacción (Cuerpo)
+-- 9. Tabla de Lotes de Producto (Para PEPS / FIFO)
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='product_lots' AND xtype='U')
+BEGIN
+    CREATE TABLE product_lots (
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        product_id BIGINT NOT NULL FOREIGN KEY REFERENCES products(id),
+        transaction_id BIGINT NULL FOREIGN KEY REFERENCES inventory_transactions(id),
+        warehouse_id BIGINT NOT NULL FOREIGN KEY REFERENCES warehouses(id),
+        entry_date DATETIME DEFAULT GETDATE(),
+        initial_quantity INT NOT NULL CHECK (initial_quantity >= 0),
+        available_quantity INT NOT NULL CHECK (available_quantity >= 0),
+        unit_cost DECIMAL(18,2) NOT NULL
+    );
+END
+GO
+
+-- 9.5. Tabla de Detalles de Transacción (Cuerpo) con Relación a Lotes
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='transaction_items' AND xtype='U')
 BEGIN
     CREATE TABLE transaction_items (
@@ -120,10 +136,12 @@ BEGIN
         product_id INT NOT NULL FOREIGN KEY REFERENCES products(id),
         quantity INT NOT NULL CHECK (quantity > 0),
         unit_price DECIMAL(18,2) NOT NULL,
+        lot_id BIGINT NULL FOREIGN KEY REFERENCES product_lots(id),
         subtotal AS (quantity * unit_price)
     );
 END
 GO
+
 
 -- 10. Tabla de Auditoría de Reportes
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='report_exports_audit' AND xtype='U')

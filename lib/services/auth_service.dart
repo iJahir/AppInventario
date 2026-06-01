@@ -24,6 +24,14 @@ class AuthService {
         await prefs.setString('user_id', user.id ?? '');
         await prefs.setString('user_name', user.name);
         await prefs.setString('user_email', user.email);
+        if (user.role != null) {
+          await prefs.setString('user_role', user.role!);
+        }
+        if (user.profileImageUrl != null) {
+          await prefs.setString('user_profile_image_url', user.profileImageUrl!);
+        } else {
+          await prefs.remove('user_profile_image_url');
+        }
         
         return user;
       }
@@ -60,6 +68,8 @@ class AuthService {
     await prefs.remove('user_id');
     await prefs.remove('user_name');
     await prefs.remove('user_email');
+    await prefs.remove('user_role');
+    await prefs.remove('user_profile_image_url');
   }
 
   /// Obtiene el token guardado para solicitudes autenticadas
@@ -74,9 +84,17 @@ class AuthService {
     final id = prefs.getString('user_id');
     final name = prefs.getString('user_name');
     final email = prefs.getString('user_email');
+    final role = prefs.getString('user_role');
+    final profileImageUrl = prefs.getString('user_profile_image_url');
 
     if (id != null && name != null && email != null) {
-      return UserModel(id: id, name: name, email: email);
+      return UserModel(
+        id: id,
+        name: name,
+        email: email,
+        role: role,
+        profileImageUrl: profileImageUrl,
+      );
     }
     return null;
   }
@@ -97,6 +115,40 @@ class AuthService {
       return true;
     } catch (e) {
       print('AuthService updatePassword Error: $e');
+      rethrow;
+    }
+  }
+
+  /// Actualiza el perfil del usuario (nombre y opcionalmente foto de perfil)
+  Future<UserModel?> updateProfile(String userId, String name, String? base64Image) async {
+    try {
+      final token = await getToken();
+      final response = await _apiService.post(
+        '/auth/update-profile',
+        {
+          'userId': userId,
+          'name': name,
+          if (base64Image != null) 'base64Image': base64Image,
+        },
+        token: token,
+      );
+
+      if (response != null && response['user'] != null) {
+        final user = UserModel.fromJson(response['user']);
+        
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('user_name', user.name);
+        if (user.profileImageUrl != null) {
+          await prefs.setString('user_profile_image_url', user.profileImageUrl!);
+        } else {
+          await prefs.remove('user_profile_image_url');
+        }
+        
+        return user;
+      }
+      return null;
+    } catch (e) {
+      print('AuthService updateProfile Error: $e');
       rethrow;
     }
   }
