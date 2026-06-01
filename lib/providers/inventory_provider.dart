@@ -99,7 +99,9 @@ class InventoryProvider extends ChangeNotifier {
   /// Obtiene los almacenes, proveedores y clientes desde SQL Server
   Future<void> fetchConfigData({bool force = false}) async {
     if (!force && _warehouses.isNotEmpty && _suppliers.isNotEmpty && _customers.isNotEmpty) {
+      _isLoading = false;
       _errorMessage = null;
+      notifyListeners();
       try {
         final token = await _authService.getToken();
         await fetchLogo();
@@ -167,7 +169,9 @@ class InventoryProvider extends ChangeNotifier {
   /// Obtiene el historial de movimientos de inventario de SQL Server
   Future<void> fetchTransactions({bool force = false}) async {
     if (!force && _transactions.isNotEmpty) {
+      _isLoading = false;
       _errorMessage = null;
+      notifyListeners();
       try {
         final token = await _authService.getToken();
         final response = await _apiService.get('/transactions', token: token);
@@ -276,7 +280,7 @@ class InventoryProvider extends ChangeNotifier {
         }
 
         // Recargar transacciones para tener el listado al día
-        await fetchTransactions();
+        await fetchTransactions(force: true);
         return true;
       }
       _isLoading = false;
@@ -307,7 +311,7 @@ class InventoryProvider extends ChangeNotifier {
       final response = await _apiService.post('/suppliers', payload, token: token);
 
       if (response != null) {
-        await fetchConfigData();
+        await fetchConfigData(force: true);
         return true;
       }
       _isLoading = false;
@@ -338,7 +342,7 @@ class InventoryProvider extends ChangeNotifier {
       final response = await _apiService.put('/suppliers/$id', payload, token: token);
 
       if (response != null) {
-        await fetchConfigData();
+        await fetchConfigData(force: true);
         return true;
       }
       _isLoading = false;
@@ -364,7 +368,7 @@ class InventoryProvider extends ChangeNotifier {
       final response = await _apiService.delete('/suppliers/$id', token: token);
 
       if (response != null) {
-        await fetchConfigData();
+        await fetchConfigData(force: true);
         return true;
       }
       _isLoading = false;
@@ -395,7 +399,7 @@ class InventoryProvider extends ChangeNotifier {
       final response = await _apiService.post('/customers', payload, token: token);
 
       if (response != null) {
-        await fetchConfigData();
+        await fetchConfigData(force: true);
         return true;
       }
       _isLoading = false;
@@ -426,7 +430,7 @@ class InventoryProvider extends ChangeNotifier {
       final response = await _apiService.put('/customers/$id', payload, token: token);
 
       if (response != null) {
-        await fetchConfigData();
+        await fetchConfigData(force: true);
         return true;
       }
       _isLoading = false;
@@ -452,7 +456,7 @@ class InventoryProvider extends ChangeNotifier {
       final response = await _apiService.delete('/customers/$id', token: token);
 
       if (response != null) {
-        await fetchConfigData();
+        await fetchConfigData(force: true);
         return true;
       }
       _isLoading = false;
@@ -483,7 +487,7 @@ class InventoryProvider extends ChangeNotifier {
       final response = await _apiService.post('/warehouses', payload, token: token);
 
       if (response != null) {
-        await fetchConfigData();
+        await fetchConfigData(force: true);
         return true;
       }
       _isLoading = false;
@@ -514,7 +518,7 @@ class InventoryProvider extends ChangeNotifier {
       final response = await _apiService.put('/warehouses/$id', payload, token: token);
 
       if (response != null) {
-        await fetchConfigData();
+        await fetchConfigData(force: true);
         return true;
       }
       _isLoading = false;
@@ -540,7 +544,7 @@ class InventoryProvider extends ChangeNotifier {
       final response = await _apiService.delete('/warehouses/$id', token: token);
 
       if (response != null) {
-        await fetchConfigData();
+        await fetchConfigData(force: true);
         return true;
       }
       _isLoading = false;

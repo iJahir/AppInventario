@@ -19,7 +19,9 @@ class ProductProvider extends ChangeNotifier {
   /// Obtiene todos los productos desde la base de datos remota
   Future<void> fetchProducts({bool force = false}) async {
     if (!force && _products.isNotEmpty) {
+      _isLoading = false;
       _errorMessage = null;
+      notifyListeners();
       try {
         final token = await _authService.getToken();
         final response = await _apiService.get('/products', token: token);
