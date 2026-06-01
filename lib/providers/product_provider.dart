@@ -159,4 +159,56 @@ class ProductProvider extends ChangeNotifier {
       return [];
     }
   }
+
+  /// Obtiene el detalle de consumo por lotes PEPS de una transacción de SALIDA registrada
+  Future<List<Map<String, dynamic>>> fetchTransactionFifoDetail(String transactionId) async {
+    try {
+      final token = await _authService.getToken();
+      final response = await _apiService.get('/transactions/$transactionId/fifo-detail', token: token);
+      if (response != null && response is List) {
+        return List<Map<String, dynamic>>.from(response);
+      }
+      return [];
+    } catch (e) {
+      print('fetchTransactionFifoDetail error: $e');
+      return [];
+    }
+  }
+
+  /// Calcula en tiempo real qué lotes PEPS se consumirán para una salida (vista previa)
+  Future<Map<String, dynamic>?> fetchPepsPreview(String productId, int qty, String warehouseId) async {
+    try {
+      final token = await _authService.getToken();
+      final response = await _apiService.get(
+        '/products/$productId/lots/preview-peps?qty=$qty&warehouseId=$warehouseId',
+        token: token,
+      );
+      if (response != null && response is Map) {
+        return Map<String, dynamic>.from(response);
+      }
+      return null;
+    } catch (e) {
+      print('fetchPepsPreview error: $e');
+      return null;
+    }
+  }
+
+  /// Obtiene todos los lotes PEPS de un producto
+  /// [status]: 'active' | 'depleted' | null (todos)
+  Future<List<Map<String, dynamic>>> fetchProductLots(String productId, {String? status}) async {
+    try {
+      final token = await _authService.getToken();
+      final endpoint = status != null
+          ? '/products/$productId/lots?status=$status'
+          : '/products/$productId/lots';
+      final response = await _apiService.get(endpoint, token: token);
+      if (response != null && response is List) {
+        return List<Map<String, dynamic>>.from(response);
+      }
+      return [];
+    } catch (e) {
+      print('fetchProductLots error: $e');
+      return [];
+    }
+  }
 }

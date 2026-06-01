@@ -21,8 +21,13 @@ import '../screens/transfers_screen.dart';
 import '../screens/new_transfer_screen.dart';
 import '../screens/reports_screen.dart';
 import '../screens/profile_edit_screen.dart';
+import '../screens/product_lots_screen.dart';
+import '../screens/all_entries_screen.dart';
+import '../screens/all_outputs_screen.dart';
 
 class AppRoutes {
+  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
   static const String login = '/login';
   static const String dashboard = '/dashboard';
   static const String products = '/products';
@@ -45,6 +50,9 @@ class AppRoutes {
   static const String addTransfer = '/add-transfer';
   static const String reports = '/reports';
   static const String editProfile = '/edit-profile';
+  static const String productLots = '/product-lots';
+  static const String allEntries = '/all-entries';
+  static const String allOutputs = '/all-outputs';
 
   static Map<String, WidgetBuilder> getRoutes() {
     return {
@@ -70,6 +78,9 @@ class AppRoutes {
       addTransfer: (context) => const NewTransferScreen(),
       reports: (context) => const ReportsScreen(),
       editProfile: (context) => const ProfileEditScreen(),
+      productLots: (context) => const ProductLotsScreen(),
+      allEntries: (context) => const AllEntriesScreen(),
+      allOutputs: (context) => const AllOutputsScreen(),
     };
   }
 }

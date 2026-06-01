@@ -673,6 +673,40 @@ class _ProductKardexScreenState extends State<ProductKardexScreen> {
                     
                     const SizedBox(height: 8),
 
+                    // Badge Lote PEPS (solo si tiene lotId)
+                    if (m.lotId != null) ...[
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF6A11CB).withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: const Color(0xFF6A11CB).withValues(alpha: 0.2),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.layers_rounded, color: Color(0xFFB39DDB), size: 10),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Lote #${m.lotId}',
+                                  style: const TextStyle(
+                                    color: Color(0xFFB39DDB),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+
                     // Observaciones
                     if (m.observations.isNotEmpty) ...[
                       Text(
@@ -712,6 +746,7 @@ class _ProductKardexScreenState extends State<ProductKardexScreen> {
             },
           ),
         ),
+
 
         // Controles de Paginación
         if (totalPages > 1) ...[

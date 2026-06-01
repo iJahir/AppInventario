@@ -6,6 +6,8 @@ class KardexModel {
   final int runningStock;
   final String userName;
   final String observations;
+  final String? transactionId; // ID de la transacción origen
+  final String? lotId;         // ID del lote PEPS consumido (null en entradas viejas)
 
   KardexModel({
     required this.date,
@@ -15,6 +17,8 @@ class KardexModel {
     required this.runningStock,
     required this.userName,
     required this.observations,
+    this.transactionId,
+    this.lotId,
   });
 
   factory KardexModel.fromJson(Map<String, dynamic> json) {
@@ -26,6 +30,8 @@ class KardexModel {
       runningStock: json['runningStock'] ?? 0,
       userName: json['userName'] ?? 'Desconocido',
       observations: json['observations'] ?? '',
+      transactionId: json['transactionId']?.toString(),
+      lotId: json['lotId']?.toString(),
     );
   }
 
@@ -38,6 +44,8 @@ class KardexModel {
       'runningStock': runningStock,
       'userName': userName,
       'observations': observations,
+      if (transactionId != null) 'transactionId': transactionId,
+      if (lotId != null) 'lotId': lotId,
     };
   }
 }

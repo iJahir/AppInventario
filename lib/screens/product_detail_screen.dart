@@ -6,6 +6,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:path_provider/path_provider.dart';
 import '../models/product_model.dart';
 import '../models/kardex_model.dart';
 import '../providers/product_provider.dart';
@@ -146,10 +147,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         _buildAuditDates(context),
                         const SizedBox(height: 25),
 
+                        _buildPepsLotsButton(context, product),
+                        const SizedBox(height: 25),
+
                         _buildSectionTitle(context, 'Últimos 5 Movimientos'),
                         const SizedBox(height: 15),
                         _buildRecentMovementsSection(context, product),
                         const SizedBox(height: 40),
+
                       ],
                     ),
                   ),
@@ -993,15 +998,34 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
     final bytes = await doc.save();
     
-    // Guardar en la carpeta pública de descargas (Android)
+    // Guardar en la carpeta pública de descargas (Android) con fallbacks
     bool savedLocally = false;
     String localPath = '';
     try {
-      final dir = io.Directory('/storage/emulated/0/Download');
-      if (await dir.exists()) {
-        final cleanedName = product.name.replaceAll(RegExp(r'[^\w\s\-]'), '').replaceAll(' ', '_');
-        final filename = 'etiquetas_${cleanedName}_${DateTime.now().millisecondsSinceEpoch}.pdf';
-        final file = io.File('${dir.path}/$filename');
+      final cleanedName = product.name.replaceAll(RegExp(r'[^\w\s\-]'), '').replaceAll(' ', '_');
+      final filename = '${cleanedName}_qr.pdf';
+      
+      io.Directory? downloadDir;
+      if (io.Platform.isAndroid) {
+        final publicDir = io.Directory('/storage/emulated/0/Download');
+        if (await publicDir.exists()) {
+          downloadDir = publicDir;
+        }
+      }
+      
+      if (downloadDir == null) {
+        try {
+          downloadDir = await getDownloadsDirectory();
+        } catch (_) {}
+      }
+      if (downloadDir == null) {
+        try {
+          downloadDir = await getExternalStorageDirectory();
+        } catch (_) {}
+      }
+      
+      if (downloadDir != null) {
+        final file = io.File('${downloadDir.path}/$filename');
         await file.writeAsBytes(bytes);
         savedLocally = true;
         localPath = file.path;
@@ -1015,13 +1039,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         SweetAlert.show(
           context,
           title: 'PDF Descargado',
-          message: 'El archivo de etiquetas se ha guardado en la carpeta de Descargas:\n\n${localPath.split('/').last}',
+          message: 'El archivo de etiquetas se ha guardado en la carpeta de Descargas:\n\n${localPath.split(io.Platform.pathSeparator).last}',
           type: SweetAlertType.success,
         );
       }
     }
 
-    await Printing.sharePdf(bytes: bytes, filename: 'etiquetas_${product.sku ?? product.id ?? product.name}.pdf');
+    final cleanedShareName = product.name.replaceAll(RegExp(r'[^\w\s\-]'), '').replaceAll(' ', '_');
+    await Printing.sharePdf(bytes: bytes, filename: '${cleanedShareName}_qr.pdf');
   }
 
   void _simulateThermalPrinting(BuildContext context, ProductModel product) {
@@ -1112,4 +1137,80 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       },
     );
   }
+
+  Widget _buildPepsLotsButton(BuildContext context, ProductModel product) {
+    return GestureDetector(
+      onTap: () => Navigator.pushNamed(
+        context,
+        '/product-lots',
+        arguments: product,
+      ),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              const Color(0xFF6A11CB).withValues(alpha: 0.15),
+              const Color(0xFF2575FC).withValues(alpha: 0.1),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: const Color(0xFF6A11CB).withValues(alpha: 0.25),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF6A11CB), Color(0xFF2575FC)],
+                ),
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF6A11CB).withValues(alpha: 0.3),
+                    blurRadius: 8,
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.layers_rounded, color: Colors.white, size: 20),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Lotes PEPS / FIFO',
+                    style: TextStyle(
+                      color: AppColors.getTextColor(context),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    'Ver trazabilidad por lote · Activos y agotados',
+                    style: TextStyle(
+                      color: AppColors.getSubtextColor(context),
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: AppColors.getSubtextColor(context).withValues(alpha: 0.5),
+              size: 22,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
+

@@ -212,3 +212,26 @@ El proyecto incluye un script de prueba de extremo a extremo para auditar que el
    node test_fifo.js
    ```
 4. El script limpiará datos de pruebas previas, creará un producto temporal, insertará entradas con distintos precios ($30, $35, $25), realizará salidas parciales y multi-lote, y comprobará que el stock global, la distribución de lotes y los costos unitarios del Kardex coincidan exactamente con la lógica PEPS.
+
+---
+
+## 💎 Características de la Versión Pro (Última Actualización)
+
+En esta nueva versión profesional, se incorporaron mejoras clave de seguridad, trazabilidad de costos y experiencia de usuario (UX):
+
+1. **Renombramiento de la Aplicación a "Inventario Pro":**
+   * Se actualizó la identidad visual y configuraciones nativas de compilación en Android, Flutter MaterialApp y pantallas principales.
+2. **Cierre Automático de Sesión por Inactividad (Seguridad Bancaria):**
+   * Se implementó un widget global `InactivityDetector` que monitorea movimientos, clics y toques del usuario.
+   * Si no hay actividad durante **5 minutos**, la sesión se cierra automáticamente de forma segura, redirigiendo a la pantalla de Login y mostrando una alerta interactiva SweetAlert.
+3. **Paginación Avanzada y Vistas Especiales:**
+   * **Kardex:** Paginado dinámicamente a **10 registros por página**.
+   * **Entradas y Salidas ("Ver Todas"):** Nuevas pantallas dedicadas (`AllEntriesScreen` y `AllOutputsScreen`) con filtros de búsqueda en tiempo real, ordenación inteligente y paginación nativa de 10 en 10.
+4. **Trazabilidad Completa de Lotes PEPS (FIFO):**
+   * Modales de detalle de transacciones ahora cargan de manera asíncrona mediante el widget `_TransactionDetailSheet` y renderizan de forma detallada qué lotes exactos fueron creados (en Entradas) o consumidos (en Salidas), eliminando problemas de carga infinita.
+5. **Edición/Eliminación Inline en Formularios de Movimiento:**
+   * En los formularios de Nueva Entrada y Nueva Salida, ahora se puede editar y eliminar cualquier producto pre-agregado en la lista antes de enviar la transacción final al servidor, evitando tener que borrar y empezar de nuevo.
+6. **Extras de Descarga de Códigos QR Autónomos:**
+   * Se eliminaron rutas hardcodeadas de emulador para guardado. La aplicación ahora implementa un resolvedor con fallbacks inteligentes usando `path_provider` (`getDownloadsDirectory()`, `getExternalStorageDirectory()`) para guardar en la carpeta física de descargas de cualquier dispositivo móvil real.
+   * Las etiquetas PDF generadas se nombran de forma limpia y profesional basándose en el producto: `[Nombre_Producto]_qr.pdf`.
+   * Se añadió un banner de instrucciones e información superior en la cámara de escaneo rápido para mejorar la usabilidad del operador.

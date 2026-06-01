@@ -362,7 +362,30 @@ class _NuevaSalidaScreenState extends State<NuevaSalidaScreen> {
               ],
             ),
           ),
-          Text("\$${(product['quantity'] * product['price']).toStringAsFixed(2)}", style: TextStyle(color: AppColors.getTextColor(context), fontWeight: FontWeight.bold)),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text("\$${(product['quantity'] * product['price']).toStringAsFixed(2)}", style: TextStyle(color: AppColors.getTextColor(context), fontWeight: FontWeight.bold)),
+              const SizedBox(height: 5),
+              Row(
+                children: [
+                  GestureDetector(
+                    onTap: () => _showAddProductModal(editProduct: product),
+                    child: const Icon(Icons.edit_rounded, color: Colors.blueAccent, size: 18),
+                  ),
+                  const SizedBox(width: 12),
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _productos.remove(product);
+                      });
+                    },
+                    child: const Icon(Icons.delete_rounded, color: Colors.redAccent, size: 18),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -515,15 +538,23 @@ class _NuevaSalidaScreenState extends State<NuevaSalidaScreen> {
     );
   }
 
-  void _showAddProductModal() {
+  void _showAddProductModal({Map<String, dynamic>? editProduct}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => _AgregarProductoSalidaModal(
+        editProduct: editProduct,
         onAdd: (product) {
           setState(() {
-            _productos.add(product);
+            if (editProduct != null) {
+              final idx = _productos.indexWhere((p) => p['productId'] == editProduct['productId']);
+              if (idx != -1) {
+                _productos[idx] = product;
+              }
+            } else {
+              _productos.add(product);
+            }
           });
         },
       ),
@@ -532,8 +563,9 @@ class _NuevaSalidaScreenState extends State<NuevaSalidaScreen> {
 }
 
 class _AgregarProductoSalidaModal extends StatefulWidget {
+  final Map<String, dynamic>? editProduct;
   final Function(Map<String, dynamic>) onAdd;
-  const _AgregarProductoSalidaModal({required this.onAdd});
+  const _AgregarProductoSalidaModal({this.editProduct, required this.onAdd});
 
   @override
   State<_AgregarProductoSalidaModal> createState() => _AgregarProductoSalidaModalState();
@@ -544,6 +576,17 @@ class _AgregarProductoSalidaModalState extends State<_AgregarProductoSalidaModal
   int _quantity = 1;
   double _price = 0.0;
   int _availableStock = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.editProduct != null) {
+      _selectedProductId = widget.editProduct!['productId']?.toString();
+      _quantity = (widget.editProduct!['quantity'] as num?)?.toInt() ?? 1;
+      _price = (widget.editProduct!['price'] as num?)?.toDouble() ?? 0.0;
+      _availableStock = (widget.editProduct!['currentStock'] as num?)?.toInt() ?? 0;
+    }
+  }
 
   void _showQRScanner(BuildContext context) {
     showModalBottomSheet(
@@ -595,7 +638,33 @@ class _AgregarProductoSalidaModalState extends State<_AgregarProductoSalidaModal
               },
             ),
             Positioned(
-              top: 40,
+              top: 25,
+              left: 20,
+              right: 80,
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Escáner de Producto',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Apunta al código QR o de barras del producto',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Positioned(
+              top: 25,
               right: 20,
               child: CircleAvatar(
                 backgroundColor: Colors.white24,
@@ -648,7 +717,7 @@ class _AgregarProductoSalidaModalState extends State<_AgregarProductoSalidaModal
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Agregar producto (Salida)',
+                  widget.editProduct != null ? 'Editar producto' : 'Agregar producto (Salida)',
                   style: TextStyle(color: AppColors.getTextColor(context), fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 IconButton(
@@ -855,7 +924,12 @@ class _AgregarProductoSalidaModalState extends State<_AgregarProductoSalidaModal
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [BoxShadow(color: AppColors.azulPrincipal.withValues(alpha: 0.3), blurRadius: 10)],
               ),
-              child: const Center(child: Text('Agregar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+              child: Center(
+                child: Text(
+                  widget.editProduct != null ? 'Guardar' : 'Agregar',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+              ),
             ),
           ),
         ),

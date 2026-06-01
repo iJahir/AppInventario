@@ -39,18 +39,18 @@ async function runTests() {
 
         // 1. Limpieza y preparación de datos semilla de prueba
         console.log('\n🧹 Limpiando registros previos de prueba...');
-        
+
         // Obtener ID del producto si existe
         let prodRes = await pool.request().query("SELECT id FROM products WHERE sku = 'SKU-TEST-PEPS'");
         if (prodRes.recordset.length > 0) {
             const prodId = prodRes.recordset[0].id;
-            
+
             // Eliminar transacciones e ítems relacionados al producto de prueba
             await pool.request().input('prodId', sql.Int, prodId).query(`
                 DELETE FROM transaction_items WHERE product_id = @prodId;
                 DELETE FROM product_lots WHERE product_id = @prodId;
             `);
-            
+
             // Eliminar producto
             await pool.request().input('prodId', sql.Int, prodId).query(`
                 DELETE FROM products WHERE id = @prodId;
@@ -116,7 +116,7 @@ async function runTests() {
                         OUTPUT INSERTED.id
                         VALUES (@type, @warehouseId, @supplierId, @customerId, 0.00, @observations, @userId, @reason)
                     `);
-                
+
                 const transactionId = txResult.recordset[0].id;
                 let totalValuation = 0.00;
 
@@ -339,7 +339,7 @@ async function runTests() {
             WHERE ti.product_id = @productId AND t.type = 'SALIDA'
             ORDER BY t.transaction_date ASC, ti.id ASC
         `);
-        
+
         kardexRes.recordset.forEach((row, i) => {
             console.log(`  Movimiento ${i + 1} (${row.observations}): Consumió ${row.quantity} unidades a un costo de $${row.unit_price}`);
         });
