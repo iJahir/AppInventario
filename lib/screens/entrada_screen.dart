@@ -1341,39 +1341,42 @@ class _TransactionDetailSheetState extends State<_TransactionDetailSheet> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: widget.isEntrada 
-                                        ? Colors.green.withOpacity(0.15) 
-                                        : const Color(0xFF6A11CB).withOpacity(0.15),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Text(
-                                      'Lote #$lotId',
-                                      style: TextStyle(
-                                        color: widget.isEntrada ? Colors.greenAccent : const Color(0xFFB39DDB),
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
+                              Expanded(
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: widget.isEntrada 
+                                          ? Colors.green.withOpacity(0.15) 
+                                          : const Color(0xFF6A11CB).withOpacity(0.15),
+                                        borderRadius: BorderRadius.circular(6),
                                       ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  if (productName.isNotEmpty)
-                                    Flexible(
                                       child: Text(
-                                        productName,
+                                        'Lote #$lotId',
                                         style: TextStyle(
-                                          color: AppColors.getSubtextColor(context),
-                                          fontSize: 11,
+                                          color: widget.isEntrada ? Colors.greenAccent : const Color(0xFFB39DDB),
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
                                         ),
-                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
-                                ],
+                                    const SizedBox(width: 8),
+                                    if (productName.isNotEmpty)
+                                      Flexible(
+                                        child: Text(
+                                          productName,
+                                          style: TextStyle(
+                                            color: AppColors.getSubtextColor(context),
+                                            fontSize: 11,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                  ],
+                                ),
                               ),
+                              const SizedBox(width: 12),
                               Text(
                                 '\$${subtotalLot.toStringAsFixed(2)}',
                                 style: TextStyle(

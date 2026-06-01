@@ -17,7 +17,22 @@ class ProductProvider extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
 
   /// Obtiene todos los productos desde la base de datos remota
-  Future<void> fetchProducts() async {
+  Future<void> fetchProducts({bool force = false}) async {
+    if (!force && _products.isNotEmpty) {
+      _errorMessage = null;
+      try {
+        final token = await _authService.getToken();
+        final response = await _apiService.get('/products', token: token);
+        if (response != null && response is List) {
+          _products = response.map((json) => ProductModel.fromJson(json)).toList();
+          notifyListeners();
+        }
+      } catch (e) {
+        print('fetchProducts background error: $e');
+      }
+      return;
+    }
+
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
