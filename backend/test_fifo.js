@@ -126,14 +126,8 @@ async function runTests() {
                     const unitPrice = parseFloat(item.unitPrice);
 
                     if (payload.type === 'ENTRADA') {
-                        await new sql.Request(transaction)
-                            .input('txId', sql.BigInt, transactionId)
-                            .input('productId', sql.BigInt, prodId)
-                            .input('quantity', sql.Int, qty)
-                            .input('unitPrice', sql.Decimal(18, 2), unitPrice)
-                            .query('INSERT INTO transaction_items (transaction_id, product_id, quantity, unit_price) VALUES (@txId, @productId, @quantity, @unitPrice)');
-
-                        await new sql.Request(transaction)
+                        // 1. Crear lote primero para obtener su ID
+                        const lotResult = await new sql.Request(transaction)
                             .input('txId', sql.BigInt, transactionId)
                             .input('productId', sql.BigInt, prodId)
                             .input('warehouseId', sql.BigInt, parseInt(payload.warehouseId))
@@ -141,8 +135,19 @@ async function runTests() {
                             .input('unitCost', sql.Decimal(18, 2), unitPrice)
                             .query(`
                                 INSERT INTO product_lots (product_id, transaction_id, warehouse_id, initial_quantity, available_quantity, unit_cost)
+                                OUTPUT INSERTED.id
                                 VALUES (@productId, @txId, @warehouseId, @quantity, @quantity, @unitCost)
                             `);
+                        const lotId = lotResult.recordset[0].id;
+
+                        // 2. Registrar item enlazado al lote
+                        await new sql.Request(transaction)
+                            .input('txId', sql.BigInt, transactionId)
+                            .input('productId', sql.BigInt, prodId)
+                            .input('quantity', sql.Int, qty)
+                            .input('unitPrice', sql.Decimal(18, 2), unitPrice)
+                            .input('lotId', sql.BigInt, lotId)
+                            .query('INSERT INTO transaction_items (transaction_id, product_id, quantity, unit_price, lot_id) VALUES (@txId, @productId, @quantity, @unitPrice, @lotId)');
 
                         await new sql.Request(transaction)
                             .input('productId', sql.BigInt, prodId)
@@ -191,7 +196,8 @@ async function runTests() {
                                 .input('productId', sql.BigInt, prodId)
                                 .input('quantity', sql.Int, take)
                                 .input('unitPrice', sql.Decimal(18, 2), lotCost)
-                                .query('INSERT INTO transaction_items (transaction_id, product_id, quantity, unit_price) VALUES (@txId, @productId, @quantity, @unitPrice)');
+                                .input('lotId', sql.BigInt, lot.id)
+                                .query('INSERT INTO transaction_items (transaction_id, product_id, quantity, unit_price, lot_id) VALUES (@txId, @productId, @quantity, @unitPrice, @lotId)');
 
                             remainingQty -= take;
                             totalValuation += take * lotCost;
