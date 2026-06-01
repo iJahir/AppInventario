@@ -1300,8 +1300,8 @@ class _TransactionDetailSheetState extends State<_TransactionDetailSheet> {
                 else
                   ...fifoDetail.map((detail) {
                     final lotId = detail['lotId']?.toString() ?? '?';
-                    final int qtyLot = (detail['quantity'] as num?)?.toInt() ?? 0;
-                    final double unitCost = (detail['unitPrice'] as num?)?.toDouble() ?? 0.0;
+                    final int qtyLot = int.tryParse(detail['quantity']?.toString() ?? '') ?? 0;
+                    final double unitCost = double.tryParse(detail['unitPrice']?.toString() ?? '') ?? 0.0;
                     final double subtotalLot = qtyLot * unitCost;
                     final String productName = detail['productName'] ?? '';
                     final lotDateRaw = detail['lotEntryDate'];
