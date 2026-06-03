@@ -258,6 +258,43 @@ app.post('/api/auth/update-password', async (req, res) => {
     }
 });
 
+// Recuperar contraseña (olvido de contraseña)
+app.post('/api/auth/forgot-password', async (req, res) => {
+    const { email } = req.body;
+    try {
+        const pool = await sql.connect(dbConfig);
+        
+        // Verificar si el usuario existe
+        const checkUser = await pool.request()
+            .input('email', sql.NVarChar, email)
+            .query('SELECT id, name FROM users WHERE email = @email');
+
+        if (checkUser.recordset.length === 0) {
+            return res.status(404).json({ message: 'El correo electrónico no está registrado.' });
+        }
+
+        const user = checkUser.recordset[0];
+        
+        // Generar una contraseña temporal
+        const tempPassword = `RESET-${Math.floor(100000 + Math.random() * 900000)}`;
+        
+        // Actualizar la contraseña en la base de datos
+        await pool.request()
+            .input('id', sql.BigInt, user.id)
+            .input('password', sql.NVarChar, tempPassword)
+            .query('UPDATE users SET password = @password WHERE id = @id');
+
+        console.log(`✉️ [MOCK EMAIL SENT TO ${email}]: Hola ${user.name}, tu nueva clave temporal de acceso es: ${tempPassword}`);
+
+        res.json({ 
+            message: 'Instrucciones enviadas al correo.',
+            tempPassword: tempPassword
+        });
+    } catch (err) {
+        res.status(500).json({ message: 'Error en el proceso de recuperación.', error: err.message });
+    }
+});
+
 // Guardar Foto de Perfil del Usuario
 function saveProfileImage(userId, base64Image) {
     if (!base64Image) return null;

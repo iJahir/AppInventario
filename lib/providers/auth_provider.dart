@@ -113,4 +113,23 @@ class AuthProvider extends ChangeNotifier {
       return false;
     }
   }
+
+  /// Solicita el restablecimiento de contraseña para el correo dado
+  Future<Map<String, dynamic>?> forgotPassword(String email) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final result = await _authService.forgotPassword(email);
+      _isLoading = false;
+      notifyListeners();
+      return result;
+    } catch (e) {
+      _isLoading = false;
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      notifyListeners();
+      rethrow;
+    }
+  }
 }

@@ -8,6 +8,8 @@ import '../utils/app_colors.dart';
 import '../utils/routes.dart';
 import '../utils/db_config.dart';
 import '../services/notification_service.dart';
+import '../widgets/sweet_alert.dart';
+import '../widgets/transaction_detail_sheet.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -18,6 +20,7 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
+  int _profileTapCount = 0;
 
   @override
   void initState() {
@@ -262,13 +265,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
         const SizedBox(width: 12),
         _buildCircleIconButton(context, Icons.notifications_none_rounded, onTap: () => _showNotificationModal(context)),
         const SizedBox(width: 12),
-        CircleAvatar(
-          radius: 22, 
-          backgroundColor: AppColors.moradoPrincipal.withValues(alpha: 0.2),
-          backgroundImage: imageUrl.isNotEmpty ? NetworkImage(imageUrl) : null,
-          child: imageUrl.isEmpty ? Icon(Icons.person_rounded, color: AppColors.moradoPrincipal, size: 22) : null,
+        GestureDetector(
+          onTap: () {
+            _profileTapCount++;
+            if (_profileTapCount >= 3) {
+              _profileTapCount = 0;
+              _confirmLogout(context);
+            }
+          },
+          child: CircleAvatar(
+            radius: 22, 
+            backgroundColor: AppColors.moradoPrincipal.withValues(alpha: 0.2),
+            backgroundImage: imageUrl.isNotEmpty ? NetworkImage(imageUrl) : null,
+            child: imageUrl.isEmpty ? Icon(Icons.person_rounded, color: AppColors.moradoPrincipal, size: 22) : null,
+          ),
         ),
       ],
+    );
+  }
+
+  void _confirmLogout(BuildContext context) {
+    SweetAlert.show(
+      context,
+      title: '¿Cerrar Sesión?',
+      message: '¿Estás seguro de que deseas cerrar la sesión activa?',
+      type: SweetAlertType.warning,
+      confirmButtonText: 'Cerrar Sesión',
+      cancelButtonText: 'Cancelar',
+      onConfirm: () async {
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        await authProvider.logout();
+        if (mounted) {
+          Navigator.pushNamedAndRemoveUntil(context, AppRoutes.login, (route) => false);
+        }
+      },
     );
   }
 
@@ -911,13 +941,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       final pNames = (tx['items'] as List?)?.map((i) => i['productName']).join(', ') ?? 'Varios';
       activityWidgets.add(
-        _activityItem(
-          context, 
-          title, 
-          pNames, 
-          isEntrada ? '+$totalQty' : '-$totalQty', 
-          itemColor
-        )
+        GestureDetector(
+          onTap: () {
+            showModalBottomSheet(
+              context: context,
+              backgroundColor: Colors.transparent,
+              isScrollControlled: true,
+              builder: (context) {
+                return TransactionDetailSheet(tx: tx, isEntrada: isEntrada);
+              },
+            );
+          },
+          child: _activityItem(
+            context, 
+            title, 
+            pNames, 
+            isEntrada ? '+$totalQty' : '-$totalQty', 
+            itemColor
+          ),
+        ),
       );
     }
 
@@ -1065,12 +1107,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           } else if (i == 3) {
              Navigator.pushReplacementNamed(context, AppRoutes.exits);
           } else if (i == 4) {
-            final authRole = Provider.of<AuthProvider>(context, listen: false).user?.role;
-            if (authRole == 'ADMIN') {
-              Navigator.pushReplacementNamed(context, AppRoutes.settings);
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Acceso denegado. Solo ADMIN.')));
-            }
+            Navigator.pushReplacementNamed(context, AppRoutes.settings);
           } else {
             setState(() => _selectedIndex = i);
           }

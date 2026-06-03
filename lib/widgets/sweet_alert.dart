@@ -10,6 +10,8 @@ class SweetAlert extends StatelessWidget {
   final SweetAlertType type;
   final String confirmButtonText;
   final VoidCallback? onConfirm;
+  final String? cancelButtonText;
+  final VoidCallback? onCancel;
 
   const SweetAlert({
     super.key,
@@ -18,6 +20,8 @@ class SweetAlert extends StatelessWidget {
     required this.type,
     this.confirmButtonText = 'Aceptar',
     this.onConfirm,
+    this.cancelButtonText,
+    this.onCancel,
   });
 
   static Future<void> show(
@@ -27,6 +31,8 @@ class SweetAlert extends StatelessWidget {
     SweetAlertType type = SweetAlertType.success,
     String confirmButtonText = 'Aceptar',
     VoidCallback? onConfirm,
+    String? cancelButtonText,
+    VoidCallback? onCancel,
   }) {
     return showGeneralDialog(
       context: context,
@@ -41,6 +47,8 @@ class SweetAlert extends StatelessWidget {
           type: type,
           confirmButtonText: confirmButtonText,
           onConfirm: onConfirm,
+          cancelButtonText: cancelButtonText,
+          onCancel: onCancel,
         );
       },
       transitionBuilder: (context, anim1, anim2, child) {
@@ -85,6 +93,52 @@ class SweetAlert extends StatelessWidget {
         iconData = Icons.info_outline_rounded;
         break;
     }
+
+    Widget confirmButton = InkWell(
+      onTap: () {
+        Navigator.pop(context);
+        if (onConfirm != null) onConfirm!();
+      },
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        width: cancelButtonText != null ? null : double.infinity,
+        height: 48,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: type == SweetAlertType.success
+                ? [Colors.green, Colors.greenAccent]
+                : type == SweetAlertType.error
+                    ? [Colors.redAccent, Colors.deepOrangeAccent]
+                    : [AppColors.moradoPrincipal, AppColors.azulPrincipal],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: (type == SweetAlertType.success
+                      ? Colors.green
+                      : type == SweetAlertType.error
+                          ? Colors.redAccent
+                          : AppColors.moradoPrincipal)
+                  .withValues(alpha: 0.3),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            )
+          ],
+        ),
+        child: Center(
+          child: Text(
+            confirmButtonText,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ),
+    );
 
     return BackdropFilter(
       filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
@@ -144,52 +198,42 @@ class SweetAlert extends StatelessWidget {
               ),
               const SizedBox(height: 28),
               
-              // Botón estilizado
-              InkWell(
-                onTap: () {
-                  Navigator.pop(context);
-                  if (onConfirm != null) onConfirm!();
-                },
-                borderRadius: BorderRadius.circular(16),
-                child: Container(
-                  width: double.infinity,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: type == SweetAlertType.success
-                          ? [Colors.green, Colors.greenAccent]
-                          : type == SweetAlertType.error
-                              ? [Colors.redAccent, Colors.deepOrangeAccent]
-                              : [AppColors.moradoPrincipal, AppColors.azulPrincipal],
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: (type == SweetAlertType.success
-                                ? Colors.green
-                                : type == SweetAlertType.error
-                                    ? Colors.redAccent
-                                    : AppColors.moradoPrincipal)
-                            .withValues(alpha: 0.3),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      )
-                    ],
-                  ),
-                  child: Center(
-                    child: Text(
-                      confirmButtonText,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+              // Botones
+              cancelButtonText != null
+                  ? Row(
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.pop(context);
+                              if (onCancel != null) onCancel!();
+                            },
+                            borderRadius: BorderRadius.circular(16),
+                            child: Container(
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.05),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  cancelButtonText!,
+                                  style: TextStyle(
+                                    color: AppColors.getSubtextColor(context),
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(child: confirmButton),
+                      ],
+                    )
+                  : confirmButton,
             ],
           ),
         ),

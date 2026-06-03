@@ -18,6 +18,7 @@ import '../providers/inventory_provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import '../widgets/sweet_alert.dart';
 
 
 class SettingsScreen extends StatefulWidget {
@@ -35,13 +36,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _loadBiometricsPreference();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final role = Provider.of<AuthProvider>(context, listen: false).user?.role;
-      if (role != 'ADMIN') {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Acceso denegado. Se requiere rol ADMIN.')));
-        Navigator.pushReplacementNamed(context, AppRoutes.dashboard);
-      }
-    });
   }
 
   Future<void> _loadBiometricsPreference() async {
@@ -334,17 +328,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               try {
                                 final response = await http.post(Uri.parse('${DbConfig.apiBaseUrl}/backup'));
                                 if (response.statusCode == 200) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Respaldo generado exitosamente.'), backgroundColor: Colors.green),
+                                  SweetAlert.show(
+                                    context,
+                                    title: 'Copia de Seguridad',
+                                    message: 'Respaldo generado exitosamente.',
+                                    type: SweetAlertType.success,
                                   );
                                 } else {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Error al generar respaldo.'), backgroundColor: Colors.red),
+                                  SweetAlert.show(
+                                    context,
+                                    title: 'Error de Respaldo',
+                                    message: 'No se pudo generar el respaldo en el servidor.',
+                                    type: SweetAlertType.error,
                                   );
                                 }
                               } catch (e) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Error de conexión con el servidor.'), backgroundColor: Colors.red),
+                                SweetAlert.show(
+                                  context,
+                                  title: 'Error de Conexión',
+                                  message: 'No se pudo conectar con el servidor para generar el respaldo.',
+                                  type: SweetAlertType.error,
                                 );
                               }
                             },

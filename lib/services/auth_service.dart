@@ -152,4 +152,17 @@ class AuthService {
       rethrow;
     }
   }
+
+  /// Solicita el restablecimiento de contraseña para el correo dado
+  Future<Map<String, dynamic>?> forgotPassword(String email) async {
+    try {
+      final response = await _apiService.post('/auth/forgot-password', {
+        'email': email,
+      });
+      return response;
+    } catch (e) {
+      print('AuthService forgotPassword Error: $e');
+      rethrow;
+    }
+  }
 }

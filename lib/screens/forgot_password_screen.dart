@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
+import '../widgets/sweet_alert.dart';
 import '../utils/routes.dart';
 import '../utils/app_colors.dart';
 
@@ -11,10 +14,62 @@ class ForgotPasswordScreen extends StatefulWidget {
 }
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
+  final TextEditingController _emailController = TextEditingController();
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleResetPassword() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty) {
+      SweetAlert.show(
+        context,
+        title: 'Error de Validación',
+        message: 'Por favor, ingresa tu correo electrónico.',
+        type: SweetAlertType.error,
+      );
+      return;
+    }
+
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    try {
+      final result = await authProvider.forgotPassword(email);
+      if (mounted) {
+        String msg = 'Se han enviado las instrucciones al correo electrónico.';
+        if (result != null && result['tempPassword'] != null) {
+          msg = 'Hemos restablecido tu contraseña. Tu contraseña temporal es: ${result['tempPassword']}\n\nPor favor, úsala para iniciar sesión y cámbiala de inmediato.';
+        }
+        
+        SweetAlert.show(
+          context,
+          title: 'Correo Enviado',
+          message: msg,
+          type: SweetAlertType.success,
+          onConfirm: () {
+            Navigator.pop(context); // Regresa a la pantalla de login
+          },
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        SweetAlert.show(
+          context,
+          title: 'Error',
+          message: e.toString(),
+          type: SweetAlertType.error,
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final bool isLoading = Provider.of<AuthProvider>(context).isLoading;
+
     return Scaffold(
       backgroundColor: AppColors.getBackgroundColor(context),
       body: Stack(
@@ -68,7 +123,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                                 const SizedBox(height: 50),
                                 _buildInputField(context, icon: Icons.email_outlined, hint: 'Correo electrónico'),
                                 const SizedBox(height: 40),
-                                _buildSendButton(context),
+                                isLoading 
+                                    ? const Center(child: CircularProgressIndicator(color: AppColors.moradoPrincipal))
+                                    : _buildSendButton(context),
                               ],
                             ),
                             Column(
@@ -155,6 +212,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           const SizedBox(width: 15),
           Expanded(
             child: TextField(
+              controller: _emailController,
+              keyboardType: TextInputType.emailAddress,
               style: TextStyle(color: AppColors.getTextColor(context)),
               decoration: InputDecoration(
                 hintText: hint,
@@ -170,11 +229,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   Widget _buildSendButton(BuildContext context) {
     return GestureDetector(
-      onTap: () {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Instrucciones enviadas al correo')),
-        );
-      },
+      onTap: _handleResetPassword,
       child: Container(
         width: double.infinity,
         height: 55,

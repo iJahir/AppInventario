@@ -6,6 +6,7 @@ import '../providers/inventory_provider.dart';
 import '../utils/app_colors.dart';
 import '../utils/routes.dart';
 import '../widgets/wavy_progress_indicator.dart';
+import '../widgets/sweet_alert.dart';
 
 class NewTransferScreen extends StatefulWidget {
   const NewTransferScreen({super.key});
@@ -64,15 +65,21 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
     // Si ya fue agregado, no duplicar
     final exists = _selectedItems.any((item) => item['product'].id == product.id);
     if (exists) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Este producto ya fue agregado. Modifica su cantidad en la lista.')),
+      SweetAlert.show(
+        context,
+        title: 'Producto Duplicado',
+        message: 'Este producto ya fue agregado. Modifica su cantidad en la lista.',
+        type: SweetAlertType.warning,
       );
       return;
     }
 
     if (product.stock <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Este producto no tiene existencias disponibles en el origen.')),
+      SweetAlert.show(
+        context,
+        title: 'Stock Agotado',
+        message: 'Este producto no tiene existencias disponibles en el origen.',
+        type: SweetAlertType.warning,
       );
       return;
     }
@@ -91,8 +98,11 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
   void _updateQuantity(int index, int newQty) {
     final maxStock = (_selectedItems[index]['product'] as ProductModel).stock;
     if (newQty > maxStock) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No puedes transferir más de la existencia disponible ($maxStock u.)')),
+      SweetAlert.show(
+        context,
+        title: 'Cantidad Excedida',
+        message: 'No puedes transferir más de la existencia disponible ($maxStock u.)',
+        type: SweetAlertType.warning,
       );
       return;
     }
@@ -111,14 +121,20 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
 
   Future<void> _submitTransfer() async {
     if (_fromWarehouseId == null || _toWarehouseId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Debes seleccionar el almacén de origen y destino.')),
+      SweetAlert.show(
+        context,
+        title: 'Almacenes Requeridos',
+        message: 'Debes seleccionar el almacén de origen y destino.',
+        type: SweetAlertType.warning,
       );
       return;
     }
     if (_selectedItems.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Debes agregar al menos un producto a la transferencia.')),
+      SweetAlert.show(
+        context,
+        title: 'Sin Productos',
+        message: 'Debes agregar al menos un producto a la transferencia.',
+        type: SweetAlertType.warning,
       );
       return;
     }
@@ -148,13 +164,21 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
     setState(() => _isSubmitting = false);
 
     if (success && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Transferencia registrada exitosamente.')),
+      SweetAlert.show(
+        context,
+        title: 'Transferencia Exitosa',
+        message: 'Transferencia registrada exitosamente.',
+        type: SweetAlertType.success,
+        onConfirm: () {
+          if (mounted) Navigator.pop(context);
+        },
       );
-      Navigator.pop(context);
     } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(ip.errorMessage ?? 'Error al procesar la transferencia.')),
+      SweetAlert.show(
+        context,
+        title: 'Error de Transferencia',
+        message: ip.errorMessage ?? 'Error al procesar la transferencia.',
+        type: SweetAlertType.error,
       );
     }
   }
@@ -340,8 +364,11 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
                         style: TextStyle(color: AppColors.getTextColor(context), fontSize: 14, fontWeight: FontWeight.bold),
                         onChanged: (val) {
                           if (val == _fromWarehouseId) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('El almacén de destino no puede ser el mismo que el de origen.')),
+                            SweetAlert.show(
+                              context,
+                              title: 'Bodega Inválida',
+                              message: 'El almacén de destino no puede ser el mismo que el de origen.',
+                              type: SweetAlertType.warning,
                             );
                             return;
                           }
