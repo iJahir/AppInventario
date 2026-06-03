@@ -417,8 +417,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
         });
 
         res.json({ 
-            message: 'Instrucciones enviadas al correo.',
-            tempPassword: tempPassword
+            message: 'Instrucciones enviadas al correo.'
         });
     } catch (err) {
         res.status(500).json({ message: 'Error en el proceso de recuperación.', error: err.message });

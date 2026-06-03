@@ -36,17 +36,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     try {
-      final result = await authProvider.forgotPassword(email);
+      await authProvider.forgotPassword(email);
       if (mounted) {
-        String msg = 'Se han enviado las instrucciones al correo electrónico.';
-        if (result != null && result['tempPassword'] != null) {
-          msg = 'Hemos restablecido tu contraseña. Tu contraseña temporal es: ${result['tempPassword']}\n\nPor favor, úsala para iniciar sesión y cámbiala de inmediato.';
-        }
-        
         SweetAlert.show(
           context,
           title: 'Correo Enviado',
-          message: msg,
+          message: 'Hemos restablecido tu contraseña de forma segura. Por favor, revisa tu correo electrónico para obtener la contraseña temporal de acceso e iniciar sesión.',
           type: SweetAlertType.success,
           onConfirm: () {
             Navigator.pop(context); // Regresa a la pantalla de login
