@@ -3,6 +3,8 @@ const cors = require('cors');
 const sql = require('mssql');
 const fs = require('fs');
 const path = require('path');
+const bcrypt = require('bcryptjs');
+const nodemailer = require('nodemailer');
 
 const app = express();
 app.use(cors());
@@ -28,6 +30,43 @@ sql.connect(dbConfig)
     .then(async (pool) => {
         if (pool.connected) {
             console.log('✅ Conectado exitosamente a SQL Server: inventario_multiplataforma');
+
+            // Verificar y agregar columna 'username' a la tabla 'users' si no existe, y migrar contraseñas viejas
+            try {
+                await pool.request().query(`
+                    IF NOT EXISTS (
+                        SELECT * FROM sys.columns 
+                        WHERE object_id = OBJECT_ID('users') AND name = 'username'
+                    )
+                    BEGIN
+                        ALTER TABLE users ADD username NVARCHAR(100) NULL;
+                    END
+                `);
+                console.log('✅ Columna "username" verificada/creada exitosamente en la tabla "users".');
+
+                // Asignar username por defecto a usuarios existentes que lo tengan NULL
+                await pool.request().query(`
+                    UPDATE users 
+                    SET username = SUBSTRING(email, 1, CHARINDEX('@', email) - 1) 
+                    WHERE username IS NULL AND email LIKE '%@%';
+                `);
+
+                // Encriptar contraseñas antiguas de texto plano
+                const usersResult = await pool.request().query('SELECT id, password FROM users');
+                for (const u of usersResult.recordset) {
+                    const pw = u.password;
+                    if (pw && !pw.startsWith('$2a$') && !pw.startsWith('$2b$')) {
+                        const hash = bcrypt.hashSync(pw, 10);
+                        await pool.request()
+                            .input('id', sql.BigInt, u.id)
+                            .input('hash', sql.NVarChar, hash)
+                            .query('UPDATE users SET password = @hash WHERE id = @id');
+                        console.log(`🔐 Contraseña migrada y encriptada con bcryptjs para el usuario ID ${u.id}`);
+                    }
+                }
+            } catch (dbErr) {
+                console.error('⚠️ Advertencia en migración de usuarios:', dbErr.message);
+            }
 
             // Verificar y agregar columna 'reason' si no existe, y crear tabla 'product_lots' para PEPS
             try {
@@ -164,30 +203,92 @@ app.get('/api/backups', async (req, res) => {
 // ENDPOINTS DE AUTENTICACIÓN
 // ==========================================
 
+// Helper para enviar correo de recuperación con nodemailer
+async function sendRecoveryEmail(toEmail, userName, tempPassword) {
+    let transporter;
+    try {
+        // Intentar crear cuenta de prueba en ethereal si no hay variables de entorno predefinidas
+        const testAccount = await nodemailer.createTestAccount();
+        transporter = nodemailer.createTransport({
+            host: 'smtp.ethereal.email',
+            port: 587,
+            secure: false,
+            auth: {
+                user: testAccount.user,
+                pass: testAccount.pass
+            }
+        });
+    } catch (e) {
+        // Fallback a transporter por defecto
+        transporter = nodemailer.createTransport({
+            host: 'smtp.ethereal.email',
+            port: 587,
+            secure: false,
+            auth: {
+                user: 'elizabeth.cummings71@ethereal.email',
+                pass: 'GZgYQ7aG5yS9vF19f7'
+            }
+        });
+    }
+
+    const info = await transporter.sendMail({
+        from: '"Sistema de Inventario" <soporte@inventarioapp.com>',
+        to: toEmail,
+        subject: 'Restablecimiento de Contraseña - Sistema de Inventario',
+        text: `Hola ${userName},\n\nHemos recibido una solicitud para restablecer tu contraseña.\nTu contraseña temporal de acceso es: ${tempPassword}\n\nPor favor, inicia sesión con esta clave y cámbiala de inmediato desde la sección de ajustes.\n\nAtentamente,\nEl equipo de Inventario`,
+        html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+                <h2 style="color: #6200EE; text-align: center;">Restablecimiento de Contraseña</h2>
+                <p>Hola <strong>${userName}</strong>,</p>
+                <p>Hemos recibido una solicitud para restablecer tu contraseña en el Sistema de Inventario.</p>
+                <div style="background-color: #f5f5f5; padding: 15px; text-align: center; border-radius: 5px; font-size: 18px; margin: 20px 0; border: 1px dashed #6200EE;">
+                    Tu contraseña temporal de acceso es:<br>
+                    <strong style="color: #03A9F4; font-size: 22px; letter-spacing: 1px;">${tempPassword}</strong>
+                </div>
+                <p>Por favor, ingresa a la aplicación utilizando esta contraseña y cámbiala de inmediato desde la sección de perfil/ajustes para mantener tu cuenta segura.</p>
+                <p style="color: #888888; font-size: 12px; margin-top: 30px; border-top: 1px solid #e0e0e0; padding-top: 10px; text-align: center;">
+                    Si no solicitaste este restablecimiento, puedes ignorar este correo.
+                </p>
+            </div>
+        `
+    });
+
+    console.log(`✉️ Correo enviado: ${info.messageId}`);
+    const previewUrl = nodemailer.getTestMessageUrl(info);
+    if (previewUrl) {
+        console.log(`🔗 URL de vista previa del correo: ${previewUrl}`);
+    }
+}
+
 // Login
 app.post('/api/auth/login', async (req, res) => {
-    const { email, password } = req.body;
+    const { email, password } = req.body; // email representa el identificador (correo o usuario)
     try {
         const pool = await sql.connect(dbConfig);
         const result = await pool.request()
-            .input('email', sql.NVarChar, email)
-            .input('password', sql.NVarChar, password)
-            .query('SELECT id, name, email, role, profile_image_url FROM users WHERE email = @email AND password = @password');
+            .input('identifier', sql.NVarChar, email)
+            .query('SELECT id, name, email, username, password, role, profile_image_url FROM users WHERE email = @identifier OR username = @identifier');
 
         if (result.recordset.length > 0) {
             const user = result.recordset[0];
-            res.json({
-                token: `mock_jwt_token_for_user_${user.id}`,
-                user: {
-                    id: user.id.toString(),
-                    name: user.name,
-                    email: user.email,
-                    role: user.role,
-                    profileImageUrl: user.profile_image_url
-                }
-            });
+            const isMatch = bcrypt.compareSync(password, user.password);
+            if (isMatch) {
+                res.json({
+                    token: `mock_jwt_token_for_user_${user.id}`,
+                    user: {
+                        id: user.id.toString(),
+                        name: user.name,
+                        email: user.email,
+                        username: user.username,
+                        role: user.role,
+                        profileImageUrl: user.profile_image_url
+                    }
+                });
+            } else {
+                res.status(401).json({ message: 'Contraseña incorrecta.' });
+            }
         } else {
-            res.status(401).json({ message: 'Correo o contraseña incorrectos.' });
+            res.status(401).json({ message: 'Usuario o correo incorrectos.' });
         }
     } catch (err) {
         res.status(500).json({ message: 'Error en la base de datos.', error: err.message });
@@ -196,31 +297,45 @@ app.post('/api/auth/login', async (req, res) => {
 
 // Registro
 app.post('/api/auth/register', async (req, res) => {
-    const { name, email, password } = req.body;
+    const { name, username, email, password } = req.body;
     try {
         const pool = await sql.connect(dbConfig);
 
-        // Verificar si ya existe
-        const checkUser = await pool.request()
+        // Verificar si ya existe el correo
+        const checkEmail = await pool.request()
             .input('email', sql.NVarChar, email)
             .query('SELECT id FROM users WHERE email = @email');
 
-        if (checkUser.recordset.length > 0) {
+        if (checkEmail.recordset.length > 0) {
             return res.status(400).json({ message: 'El correo electrónico ya está registrado.' });
         }
+
+        // Verificar si ya existe el usuario
+        const checkUsername = await pool.request()
+            .input('username', sql.NVarChar, username)
+            .query('SELECT id FROM users WHERE username = @username');
+
+        if (checkUsername.recordset.length > 0) {
+            return res.status(400).json({ message: 'El nombre de usuario ya está en uso.' });
+        }
+
+        // Encriptar contraseña
+        const hashedPassword = bcrypt.hashSync(password, 10);
 
         // Insertar usuario
         const result = await pool.request()
             .input('name', sql.NVarChar, name)
+            .input('username', sql.NVarChar, username)
             .input('email', sql.NVarChar, email)
-            .input('password', sql.NVarChar, password)
-            .query('INSERT INTO users (name, email, password, role) OUTPUT INSERTED.id, INSERTED.name, INSERTED.email, INSERTED.role VALUES (@name, @email, @password, \'ALMACENERO\')');
+            .input('password', sql.NVarChar, hashedPassword)
+            .query('INSERT INTO users (name, username, email, password, role) OUTPUT INSERTED.id, INSERTED.name, INSERTED.username, INSERTED.email, INSERTED.role VALUES (@name, @username, @email, @password, \'ALMACENERO\')');
 
         const newUser = result.recordset[0];
         res.json({
             user: {
                 id: newUser.id.toString(),
                 name: newUser.name,
+                username: newUser.username,
                 email: newUser.email,
                 role: newUser.role
             }
@@ -236,20 +351,29 @@ app.post('/api/auth/update-password', async (req, res) => {
     try {
         const pool = await sql.connect(dbConfig);
 
-        // Verificar contraseña actual
+        // Obtener la contraseña actual encriptada
         const checkUser = await pool.request()
             .input('id', sql.BigInt, parseInt(userId))
-            .input('password', sql.NVarChar, currentPassword)
-            .query('SELECT id FROM users WHERE id = @id AND password = @password');
+            .query('SELECT password FROM users WHERE id = @id');
 
         if (checkUser.recordset.length === 0) {
+            return res.status(404).json({ message: 'Usuario no encontrado.' });
+        }
+
+        const user = checkUser.recordset[0];
+        const isMatch = bcrypt.compareSync(currentPassword, user.password);
+
+        if (!isMatch) {
             return res.status(400).json({ message: 'La contraseña actual es incorrecta.' });
         }
+
+        // Encriptar la nueva contraseña
+        const hashedPassword = bcrypt.hashSync(newPassword, 10);
 
         // Actualizar contraseña
         await pool.request()
             .input('id', sql.BigInt, parseInt(userId))
-            .input('password', sql.NVarChar, newPassword)
+            .input('password', sql.NVarChar, hashedPassword)
             .query('UPDATE users SET password = @password WHERE id = @id');
 
         res.json({ message: 'Contraseña actualizada exitosamente.' });
@@ -275,16 +399,22 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 
         const user = checkUser.recordset[0];
         
-        // Generar una contraseña temporal
+        // Generar una contraseña temporal y encriptarla
         const tempPassword = `RESET-${Math.floor(100000 + Math.random() * 900000)}`;
+        const hashedPassword = bcrypt.hashSync(tempPassword, 10);
         
         // Actualizar la contraseña en la base de datos
         await pool.request()
             .input('id', sql.BigInt, user.id)
-            .input('password', sql.NVarChar, tempPassword)
+            .input('password', sql.NVarChar, hashedPassword)
             .query('UPDATE users SET password = @password WHERE id = @id');
 
         console.log(`✉️ [MOCK EMAIL SENT TO ${email}]: Hola ${user.name}, tu nueva clave temporal de acceso es: ${tempPassword}`);
+
+        // Enviar correo de verdad de manera asíncrona
+        sendRecoveryEmail(email, user.name, tempPassword).catch(emailErr => {
+            console.error('❌ Error al enviar correo de recuperación con nodemailer:', emailErr.message);
+        });
 
         res.json({ 
             message: 'Instrucciones enviadas al correo.',
@@ -294,6 +424,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
         res.status(500).json({ message: 'Error en el proceso de recuperación.', error: err.message });
     }
 });
+
 
 // Guardar Foto de Perfil del Usuario
 function saveProfileImage(userId, base64Image) {

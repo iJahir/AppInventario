@@ -43,10 +43,11 @@ class AuthService {
   }
 
   /// Registrar un nuevo usuario en la base de datos
-  Future<UserModel?> register(String name, String email, String password) async {
+  Future<UserModel?> register(String name, String username, String email, String password) async {
     try {
       final response = await _apiService.post('/auth/register', {
         'name': name,
+        'username': username,
         'email': email,
         'password': password,
       });

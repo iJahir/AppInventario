@@ -40,13 +40,13 @@ class AuthProvider extends ChangeNotifier {
   }
 
   /// Registra un nuevo usuario
-  Future<bool> register(String name, String email, String password) async {
+  Future<bool> register(String name, String username, String email, String password) async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      final newUser = await _authService.register(name, email, password);
+      final newUser = await _authService.register(name, username, email, password);
       _isLoading = false;
       if (newUser != null) {
         // Iniciar sesión automáticamente después de registrar

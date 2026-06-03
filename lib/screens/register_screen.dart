@@ -17,6 +17,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _obscureConfirmPassword = true;
 
   final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController = TextEditingController();
@@ -24,6 +25,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   void dispose() {
     _nameController.dispose();
+    _usernameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
@@ -82,6 +84,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 Text('Completa los campos para registrarte', style: TextStyle(color: AppColors.getSubtextColor(context), fontSize: 14)),
                                 const SizedBox(height: 40),
                                 _buildInputField(context, icon: Icons.person_outline_rounded, hint: 'Nombre completo', controller: _nameController),
+                                const SizedBox(height: 20),
+                                _buildInputField(context, icon: Icons.alternate_email_rounded, hint: 'Nombre de usuario', controller: _usernameController),
                                 const SizedBox(height: 20),
                                 _buildInputField(context, icon: Icons.email_outlined, hint: 'Correo electrónico', controller: _emailController),
                                 const SizedBox(height: 20),
@@ -230,11 +234,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ? null
           : () async {
               final name = _nameController.text.trim();
+              final username = _usernameController.text.trim();
               final email = _emailController.text.trim();
               final password = _passwordController.text.trim();
               final confirmPassword = _confirmPasswordController.text.trim();
 
-              if (name.isEmpty || email.isEmpty || password.isEmpty) {
+              if (name.isEmpty || username.isEmpty || email.isEmpty || password.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Por favor completa todos los campos')),
                 );
@@ -248,7 +253,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 return;
               }
 
-              final success = await authProvider.register(name, email, password);
+              final success = await authProvider.register(name, username, email, password);
 
               if (context.mounted) {
                 if (success) {
