@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:provider/provider.dart';
 import '../utils/app_colors.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/sweet_alert.dart';
 
 class UpdatePasswordScreen extends StatefulWidget {
   const UpdatePasswordScreen({super.key});
@@ -195,8 +196,11 @@ class _UpdatePasswordScreenState extends State<UpdatePasswordScreen> {
                   final confirmPassword = _confirmPasswordController.text;
 
                   if (newPassword != confirmPassword) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Las contraseñas nuevas no coinciden')),
+                    SweetAlert.show(
+                      context,
+                      title: 'Error',
+                      message: 'Las contraseñas nuevas no coinciden.',
+                      type: SweetAlertType.error,
                     );
                     return;
                   }
@@ -205,13 +209,21 @@ class _UpdatePasswordScreenState extends State<UpdatePasswordScreen> {
 
                   if (context.mounted) {
                     if (success) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Contraseña actualizada correctamente en la base de datos')),
+                      SweetAlert.show(
+                        context,
+                        title: 'Éxito',
+                        message: 'Tu contraseña ha sido actualizada correctamente en la base de datos.',
+                        type: SweetAlertType.success,
+                        onConfirm: () {
+                          Navigator.pop(context); // Cierra la pantalla
+                        },
                       );
-                      Navigator.pop(context);
                     } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(authProvider.errorMessage ?? 'Error al actualizar contraseña')),
+                      SweetAlert.show(
+                        context,
+                        title: 'Error',
+                        message: authProvider.errorMessage ?? 'Error al actualizar contraseña.',
+                        type: SweetAlertType.error,
                       );
                     }
                   }

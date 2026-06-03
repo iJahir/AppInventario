@@ -21,6 +21,7 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
   int _profileTapCount = 0;
+  int _backPressCount = 0;
 
   @override
   void initState() {
@@ -53,36 +54,54 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    return Scaffold(
-      backgroundColor: AppColors.getBackgroundColor(context),
-      body: Stack(
-        children: [
-          Positioned(
-            top: -100,
-            right: -50,
-            child: _buildBlurOrb(AppColors.azulPrincipal.withValues(alpha: isDark ? 0.15 : 0.05), 300),
-          ),
-          Positioned(
-            bottom: 100,
-            left: -50,
-            child: _buildBlurOrb(AppColors.moradoPrincipal.withValues(alpha: isDark ? 0.1 : 0.03), 250),
-          ),
-          
-          SafeArea(
-            child: IndexedStack(
-              index: _selectedIndex,
-              children: [
-                _buildInicioPage(context),
-                const Center(child: Text('Cargando Productos...')),
-                const Center(child: Text('Cargando Entradas...')),
-                const Center(child: Text('Cargando Salidas...')),
-                const Center(child: Text('Cargando Ajustes...')),
-              ],
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        _backPressCount++;
+        if (_backPressCount >= 3) {
+          _backPressCount = 0; // Reset
+          _confirmLogout(context);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Presiona ${3 - _backPressCount} veces más para cerrar sesión'),
+              duration: const Duration(seconds: 1),
             ),
-          ),
-        ],
+          );
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.getBackgroundColor(context),
+        body: Stack(
+          children: [
+            Positioned(
+              top: -100,
+              right: -50,
+              child: _buildBlurOrb(AppColors.azulPrincipal.withValues(alpha: isDark ? 0.15 : 0.05), 300),
+            ),
+            Positioned(
+              bottom: 100,
+              left: -50,
+              child: _buildBlurOrb(AppColors.moradoPrincipal.withValues(alpha: isDark ? 0.1 : 0.03), 250),
+            ),
+            
+            SafeArea(
+              child: IndexedStack(
+                index: _selectedIndex,
+                children: [
+                  _buildInicioPage(context),
+                  const Center(child: Text('Cargando Productos...')),
+                  const Center(child: Text('Cargando Entradas...')),
+                  const Center(child: Text('Cargando Salidas...')),
+                  const Center(child: Text('Cargando Ajustes...')),
+                ],
+              ),
+            ),
+          ],
+        ),
+        bottomNavigationBar: _buildSnakeNavBar(context),
       ),
-      bottomNavigationBar: _buildSnakeNavBar(context),
     );
   }
 
