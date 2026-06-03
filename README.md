@@ -239,3 +239,21 @@ En esta nueva versión profesional de **StockMaster**, se incorporaron mejoras c
    * Se eliminaron rutas hardcodeadas de emulador para guardado. La aplicación ahora implementa un resolvedor con fallbacks inteligentes usando `path_provider` (`getDownloadsDirectory()`, `getExternalStorageDirectory()`) para guardar en la carpeta física de descargas de cualquier dispositivo móvil real.
    * Las etiquetas PDF generadas se nombran de forma limpia y profesional basándose en el producto: `[Nombre_Producto]_qr.pdf`.
    * Se añadió un banner de instrucciones e información superior en la cámara de escaneo rápido para mejorar la usabilidad del operador.
+
+---
+
+## 💎 Características de la Versión 2.1 (Última Actualización)
+
+En esta última iteración de **StockMaster**, se expandió la lógica de negocio, se mejoró la consistencia en notificaciones y se agregaron accesos interactivos clave:
+
+1. **Acceso Democrático a Ajustes:**
+   * Se eliminó la restricción de rol `ADMIN` para acceder a la pantalla de Ajustes. Ahora, todos los usuarios (incluyendo operarios y almaceneros) pueden ingresar a ver y gestionar sus preferencias y copias de seguridad de forma unificada.
+2. **SweetAlerts Consistentes en Respaldos y Transferencias:**
+   * Se reemplazaron todos los SnackBars en las acciones de creación y restauración de copias de seguridad dentro de la pantalla de Ajustes, así como en las validaciones de nuevas transferencias entre almacenes, por modales elegantes `SweetAlert`.
+3. **Triple Pulsación para Cierre de Sesión:**
+   * Estando en el Dashboard principal, el usuario puede realizar una triple pulsación rápida (3 taps consecutivos) sobre su foto de perfil/avatar para disparar un modal SweetAlert interactivo de advertencia, permitiendo confirmar o cancelar el cierre seguro de su sesión.
+4. **Recuperación de Contraseña Interactiva:**
+   * Se implementó el flujo completo de "Olvidé mi contraseña". Al ingresar un correo electrónico registrado, el backend genera una credencial temporal segura (`RESET-XXXXXX`) en SQL Server y la devuelve directamente a la app mediante un modal `SweetAlert.show` para que el usuario pueda ingresar y cambiarla de inmediato.
+5. **Detalle Detallado Interactivo de Actividad Reciente:**
+   * Se extrajo el widget de detalle a un componente global y público `TransactionDetailSheet`.
+   * Se enlazaron los elementos de la sección de **Actividad Reciente** del Dashboard principal para que, al ser presionados, abran directamente este modal detallado de trazabilidad PEPS y desglose de lotes.
